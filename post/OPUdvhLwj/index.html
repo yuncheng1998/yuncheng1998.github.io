@@ -2,11 +2,11 @@
   <head>
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>顺序处理 | 云程的BLOG</title>
+<title>SQL查询语句的执行顺序 | 云程的BLOG</title>
 <link rel="shortcut icon" href="https://yuncheng1998.github.io/favicon.ico?v=1630550542146">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://yuncheng1998.github.io/styles/main.css">
-<link rel="alternate" type="application/atom+xml" title="顺序处理 | 云程的BLOG - Atom Feed" href="https://yuncheng1998.github.io/atom.xml">
+<link rel="alternate" type="application/atom+xml" title="SQL查询语句的执行顺序 | 云程的BLOG - Atom Feed" href="https://yuncheng1998.github.io/atom.xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
 
 
@@ -20,8 +20,10 @@
 </script>
 
 
-    <meta name="description" content="绝大多数的场景下，业务操作不需要保证严格的顺序处理，但在数据存储上却是最常规的要求，比如MySQL在集群模式下多节点间的数据写入顺序必然是需要一致的。在业务操作上比较典型的是数据库日志的同步，我们一般会订阅到Kafka，然后从Kafka异步..." />
-    <meta name="keywords" content="微服务" />
+    <meta name="description" content="SQL queries happen in this order
+
+..." />
+    <meta name="keywords" content="" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
   </head>
@@ -77,32 +79,22 @@
         <div class="post-detail">
           <article class="post">
             <h2 class="post-title">
-              顺序处理
+              SQL查询语句的执行顺序
             </h2>
             <div class="post-info">
               <span>
-                2021-05-30
+                2021-07-11
               </span>
               <span>
-                3 min read
+                1 min read
               </span>
-              
-                <a href="https://yuncheng1998.github.io/tag/jLQkKauw0/" class="post-tag">
-                  # 微服务
-                </a>
               
             </div>
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <p>绝大多数的场景下，业务操作不需要保证严格的顺序处理，但在数据存储上却是最常规的要求，比如MySQL在集群模式下多节点间的数据写入顺序必然是需要一致的。在业务操作上比较典型的是数据库日志的同步，我们一般会订阅到Kafka，然后从Kafka异步消费，这之中就要保证消费时记录的顺序与数据库一致。</p>
-<p>顺序处理的基础是要做到时钟一致，本质的技术有以下几种：</p>
-<p><strong>单节点处理</strong>：用一个节点处理所有消息，这种最简单，但有违微服务避免单点的原则，在可用性和可维护性上需要平衡，对一些边缘业务可采用此做法。</p>
-<p><strong>单节时序生成</strong>：用一个节点生成<em>Timestamp</em>，这样就有了一个全局可排序的数据记录，当然也同样有违避免单点的原则，但这却是很多分布式数据库的选择（比如<em>TiDB</em>），因为它足够简单。</p>
-<p><strong><em>TureTime</em>方案</strong>：由多个部署有<em>GPS</em>同步能力的时钟及原子钟节点提供<em>Timestamp</em>服务，这一方案避免了单点问题，问题在于太过昂贵，一般只有大型集群才会考虑使用（如<em>Google</em>的<em>Spanner</em>，使用这一方案保证不同服务节点的时间误差小于<em>10ns</em>）</p>
-<p><em><strong>Lamport Timestamps</strong></em>：上面说的都是物理时钟，而<em>Lamport</em>提出的是逻辑时钟概念，通过为每一操作带上本地或接收到消息的时间戳来解决访问链路的顺序问题。<em>Lamport Timestamps</em>的局限只能处理有相关性记录的顺序，像上文说到数据库日志记录就无能为力了。</p>
-<p>上述方案可以解决时钟一致性，但这远远不够。我们用<em>MQ</em>做服务解耦就会经常遇到顺序问题，比如将用户的关键操作流程通过<em>Kafka</em>传送到日志服务，日志就要保证顺序写入。但目前<em>Kafka</em>及主流的<em>MQ</em>都无法保证严格顺序，因为成本太高：要先保证生产者都同步生产消息到<em>MQ</em>，<em>MQ</em>的存储要避免多个写入节点，并且消费者只能有一个，进行逐条消费等，这在性能、可用性上都大打折扣。这时我们只能根据用户<em>Id</em>计算<em>hash</em>后分配到相同的写入节点（对应于<em>Kafka</em>的<em>Partition</em>），这样就能做到同一用户的日志消费顺序等同于日志的发送（同步发送方式）顺序。</p>
-<p>顺序处理的成本不低，在开发中我们应该尽量避免。</p>
+                <p>SQL queries happen in this order<br>
+<img src="https://yuncheng1998.github.io/post-images/1625981788114.jpeg" alt="the order of query" loading="lazy"></p>
 
               </div>
               <div class="toc-container">
@@ -115,9 +107,9 @@
         
           <div class="next-post">
             <div class="next">下一篇</div>
-            <a href="https://yuncheng1998.github.io/post/FpNwKynsD/">
+            <a href="https://yuncheng1998.github.io/post/U2aPPg3VM/">
               <h3 class="post-title">
-                分布式锁
+                延时队列
               </h3>
             </a>
           </div>

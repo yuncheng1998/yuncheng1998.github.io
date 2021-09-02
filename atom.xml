@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://yuncheng1998.github.io</id>
     <title>云程的BLOG</title>
-    <updated>2021-06-06T05:28:11.311Z</updated>
+    <updated>2021-09-02T02:42:28.317Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://yuncheng1998.github.io"/>
     <link rel="self" href="https://yuncheng1998.github.io/atom.xml"/>
@@ -10,6 +10,25 @@
     <logo>https://yuncheng1998.github.io/images/avatar.png</logo>
     <icon>https://yuncheng1998.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, 云程的BLOG</rights>
+    <entry>
+        <title type="html"><![CDATA[证明该网站为个人网站]]></title>
+        <id>https://yuncheng1998.github.io/post/QTTY-I_Cs/</id>
+        <link href="https://yuncheng1998.github.io/post/QTTY-I_Cs/">
+        </link>
+        <updated>2021-09-02T02:40:59.000Z</updated>
+        <content type="html"><![CDATA[<p>该网站为我的个人网站，本人的掘金地址为https://juejin.cn/user/2752832849322519，文章为个人网站搬运并非抄袭</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[SQL查询语句的执行顺序]]></title>
+        <id>https://yuncheng1998.github.io/post/OPUdvhLwj/</id>
+        <link href="https://yuncheng1998.github.io/post/OPUdvhLwj/">
+        </link>
+        <updated>2021-07-11T05:31:05.000Z</updated>
+        <content type="html"><![CDATA[<p>SQL queries happen in this order<br>
+<img src="https://yuncheng1998.github.io/post-images/1625981788114.jpeg" alt="the order of query" loading="lazy"></p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[延时队列]]></title>
         <id>https://yuncheng1998.github.io/post/U2aPPg3VM/</id>
@@ -484,194 +503,6 @@ consumer.subscribe(Arrays.asList(&quot;customerTopic&quot;));
 <p>一般情况下，提交失败是因为临时问题导致的，后续自动重试提交会成功。但如果在关闭消费者或重平衡前的最后一次提交，就要确保提交成功。因此，在消费者关闭之前一般会组合使用<em>commitAsync</em>和<em>commitSync</em>提交偏移量。</p>
 <h3 id="提交特定的偏移量">提交特定的偏移量</h3>
 <p>消费者API允许调用 <em>commitSync()</em> 和 <em>commitAsync()</em> 方法时传入希望提交的 <em>partition</em> 和 <em>offset</em> 的 <em>map</em>，即提交特定的偏移量。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Kafka入门（二）生产者]]></title>
-        <id>https://yuncheng1998.github.io/post/Vy1JO1w_f/</id>
-        <link href="https://yuncheng1998.github.io/post/Vy1JO1w_f/">
-        </link>
-        <updated>2021-05-14T05:38:32.000Z</updated>
-        <content type="html"><![CDATA[<p><em>ProducerRecord</em>：代表了一组需要发送的消息，它由记录要发送到的主题<em>Topic</em>，可选的分区号<em>Partition</em> 以及可选的键值对构成。</p>
-<p><em>Serializer</em>：在发送<em>ProducerRecord</em> 时，需要将键值对对象由序列化器<em>Serializer</em> 转换为字节数组在网络上传输</p>
-<p><em>Partitioner</em>：如果发送过程中指定了有效的分区号，那么在发送记录时将使用该分区。如果发送过程中未指定分区，则将使用<em>key</em> 的<em>hash</em> 函数映射指定一个分区。如果发送的过程中既没有分区号也没有<em>Key</em>，则将以循环的方式分配一个分区。选好分区后，生产者向其发送数据。这条消息被存放在一个记录批次里，批次里的所有消息会被发送到相同的主题和分区上。由一个独立的线程负责把它们发到<em>Kafka Broker</em> 上。</p>
-<p>响应：<em>Broker</em> 在收到消息时会返回一个响应，如果写入成功，返回一个<em>RecordMetaData</em> 对象，它包含了主题和分区信息，以及记录在分区里的偏移量，上面两种的时间戳类型也会返回给用户。如果写入失败，会返回一个错误。生产者在收到错误之后会尝试重新发送消息，几次之后如果还是失败的话，就返回错误消息。</p>
-<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1620971001611.png" alt="" loading="lazy"></figure>
-<h1 id="producer的创建">Producer的创建</h1>
-<p><em>Producer</em> 有3个必选的属性：<em><strong>bootstrap.servers、key.serializer、value.serializer</strong></em></p>
-<p><em><strong>boostrap.servers</strong></em>：指定<em>broker</em> 的地址，格式为<em>host:port</em> ，<em>producer</em> 根据一个<em>broker</em> 找到其他<em>broker</em> 信息，因此不需要提供全量的<em>broker</em> 地址，但也不要只给定一个（防止<em>broker</em> 宕机）</p>
-<p><em><strong>key.serializer、value.serializer</strong></em>：生产者需要将消息序列化后传递给broker，serializer表示类以何种方式进行序列化，该属性必须设置一个实现了<code>org.apache.kafka.common.serialization.Serializer</code> 接口的类，主要有：<em>ByteArraySerializer、StringSerializer、IntegerSerializer</em> ，其中 ByteArraySerialize 是 Kafka 默认使用的序列化器。</p>
-<pre><code class="language-java">// 创建 Properties 对象
-Properties properties = new Properties(); 
-// 设置bootstrap.servers
-properties.put(&quot;bootstrap.servers&quot;,&quot;broker1:9092,broker2:9092&quot;); 
-// 设置序列化器为StringSerializer
-properties.put(&quot;key.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); properties.put(&quot;value.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); 
-// 创建一个生产者对象，将属性值传递进来
-producer = new KafkaProducer&lt;String,String&gt;(properties);
-</code></pre>
-<h1 id="消息发送">消息发送</h1>
-<h2 id="简单消息发送">简单消息发送</h2>
-<p>消息先被写入分区中的缓冲区中，然后分批次发送给 <em>Kafka Broker</em>。发送成功后，<em>send</em>方法会返回<code>Future(java.util.concurrent)</code> 对象，<em>Future</em> 对象的类型是<em>RecordMetadata</em> 类型。我们上面这段代码没有考虑返回值，所以没有生成对应的<em>Future</em> 对象，所以没有办法知道消息是否发送成功。如果不是很重要的信息或者对结果不会产生影响的信息，可以使用这种方式进行发送。</p>
-<p>我们可以忽略发送消息时可能发生的错误或者在服务器端可能发生的错误，但在消息发送之前，生产者还可能发生其他的异常。这些异常有可能是 <code>SerializationException(序列化失败)</code>，<code>BufferedExhaustedException 或 TimeoutException(说明缓冲区已满)</code>，又或是 <code>InterruptedException</code>(说明发送线程被中断)</p>
-<pre><code class="language-java">String topic = &quot;&quot;;
-String key = &quot;&quot;;
-String value = &quot;&quot;;
-ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-producer.send(record);
-</code></pre>
-<h2 id="同步发送消息">同步发送消息</h2>
-<p>第二种消息发送机制如下所示</p>
-<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-try {
-  RecordMetadata recordMetadata = (RecordMetadata) producer.send(record).get();
-} catch (InterruptedException | ExecutionException e) {
-  e.printStackTrace();
-}
-</code></pre>
-<p>这种发送消息的方式首先调用 <em>send</em> 方法，然后再调用<em>get</em> 方法等待响应。如果服务器返回错误，会抛出异常，如果没有发生错误，会得到 <em>RecordMetadata</em> 对象，可以用它来查看消息记录。</p>
-<p>生产者*（KafkaProducer）*在发送的过程中会出现两类错误：</p>
-<ol>
-<li>重试错误：通过重发消息来解决。比如连接的错误，可以通过再次建立连接来解决。</li>
-<li>无主错误：通过重新为分区选举首领来解决。</li>
-</ol>
-<p><em>KafkaProducer</em> 可以被配置为自动重试，如果多次重试后仍无法解决问题，则会抛出重试异常。有些错误是无法通过重试来解决的，比如消息过大，这类错误不会进行重试，直接抛出异常。</p>
-<h2 id="异步发送消息">异步发送消息</h2>
-<p>为了在异步发送消息的同时能够对异常情况进行处理，生产者提供了回掉支持</p>
-<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-producer.send(record, new ProducerCallBack());
-
-class ProducerCallBack implements Callback {
-    @Override
-    public void onCompletion(RecordMetadata metadata, Exception exception) {
-        if(exception != null){
-          	// handle
-            exception.printStackTrace();;
-        }
-    }
-}
-</code></pre>
-<p>首先实现回调需要定义一个实现了<code>org.apache.kafka.clients.producer.Callback</code>的类，这个接口只有一个<em>onCompletion</em> 方法。如果 <em>Kafka</em> 返回一个错误，<em>onCompletion</em> 方法会抛出一个非空异常，我们可以对其进行处理，然后在<em>send</em> 方法发送的时候传递一个<em>Callback</em> 回调的对象。</p>
-<h1 id="生产者分区机制">生产者分区机制</h1>
-<p><em>Kafka</em> 对于数据的读写粒度是分区，分区分布在多个<em>Broker</em> 中，每个节点能够实现独立的数据写入和读取，并且能通过增加节点来提高集群的吞吐量，通过分区部署在多个<em>Broker</em> 来实现负载均衡的效果。</p>
-<h2 id="分区策略">分区策略</h2>
-<p>分区策略决定生产者发送的消息放到哪个分区。<em>Kafka</em> 提供了默认的分区策略，也支持自定义分区策略。</p>
-<p>如果要自定义分区策略的话，需要显示配置生产者端的参数<em>Partitioner.class</em></p>
-<pre><code class="language-java">public interface Partitioner extends Configurable, Closeable {
-  /**
-   * 计算分区
-   */
-  public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster);
-
-  public void close();
-  
-  default public void onNewBatch(String topic, Cluster cluster, int prevPartition) {}
-}
-</code></pre>
-<p><em>partition</em>方法： <em>topic</em> 表示需要传递的主题；<em>key</em> 表示消息中的键值；<em>keyBytes</em> 表示分区中序列化过后的<em>key</em>，以<em>byte</em> 数组的形式传递；<em>value</em> 表示消息的 <em>value</em> 值；<em>valueBytes</em> 表示分区中序列化后的值数组；<em>cluster</em> 表示当前集群的原数据。可以充分地利用这些信息对消息进行分区，计算出它要被发送到哪个分区中。</p>
-<p><em>close方法</em> : 继承了<em>Closeable</em> 接口，在分区关闭时调用。</p>
-<p><em>onNewBatch方法</em>：表示通知分区程序用来创建新的批次。</p>
-<p>其中与分区策略息息相关的就是 partition() 方法了，分区策略有下面这几种</p>
-<figure data-type="image" tabindex="2"><img src="https://yuncheng1998.github.io/post-images/1620971032795.png" alt="" loading="lazy"></figure>
-<p><strong>顺序轮询</strong>：消息是均匀的分配给每个 partition，即每个分区存储一次消息。顺序轮询策略是 <em>Kafka Producer</em> 提供的默认策略。</p>
-<p><strong>随机轮询</strong>：本质上看随机策略也是力求将数据均匀地打散到各个分区，但从实际表现来看，它要逊于轮询策略，所以如果追求数据的均匀分布，还是使用轮询策略比较好。</p>
-<pre><code class="language-java">// 该主题的所有分区
-List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
-// 然后随机地返回一个小于它的正整数
-return ThreadLocalRandom.current().nextInt(partitions.size());
-</code></pre>
-<p><strong>key-ordering</strong>：按照<em>Key</em> 进行消息保存，保证同一个<em>Key</em> 的所有消息都进入到相同的分区里面，由于每个分区下的消息处理都是有顺序的，故这个策略被称为按消息键保序策略。</p>
-<pre><code class="language-java">List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
-// 根据Key计算Hash值
-return Math.abs(key.hashCode()) % partitions.size();
-</code></pre>
-<h1 id="kafka-重要参数配置">Kafka 重要参数配置</h1>
-<p><em><strong>key.serializer</strong></em>：用于 key 键的序列化</p>
-<p><em><strong>value.serializer</strong></em>：用于 value 值的序列化</p>
-<p><em><strong>acks</strong></em>：指定了要有多少个分区副本接收消息，生产者才认为消息是写入成功的。</p>
-<ul>
-<li>acks=0：表示生产者不知道自己产生的消息是否被服务器接收了。类似于 UDP 的运输层协议，只管发送，<em>broker</em> 是否接受不关心。</li>
-<li>acks=1：当<em>Leader</em> 接收到消息后会给生产者返回写入成功。如果由于网络异常或者<em>Leader</em> 还没选举出来等导致消息写入失败，生产者会再次重发数据。</li>
-<li>acks=-1：所有参与复制的节点都收到消息时，生产者才会接收到一个来自服务器的消息，由于要等待所有节点确认接收消息，因此延迟比<em>acks=1</em> 高。</li>
-</ul>
-<p><em><strong>buffer.memory</strong></em></p>
-<p>设置生产者内存缓冲区的大小，用于缓冲要发送到<em>broker</em> 的消息。如果应用程序发送消息的速度超过发送到服务器的速度，会导致生产者空间不足。这时<em>send</em> 方法调用要么被阻塞，要么抛出异常，取决于<em>block.on.buffer.null</em> 参数的设置。</p>
-<p><em><strong>compression.type</strong></em></p>
-<p>表示生产者启用何种压缩算法，默认情况下消息不会被压缩。该参数可以设置为<em>snappy</em>、<em>gzip</em> 和<em>lz4</em>，指定消息发送给<em>broker</em> 之前的压缩算法。</p>
-<p><em><strong>retries</strong></em></p>
-<p>生产者从服务器收到的错误有可能是临时性的错误（比如分区找不到<em>Leader</em>），在这种情况下，该参数决定了生产者可以重发的消息次数，超过该次数后才会放弃重试并返回错误。默认情况下，生产者在每次重试之间等待<em>100ms</em>，这个等待参数可以通过 <em>retry.backoff.ms</em> 进行修改。</p>
-<p><em><strong>batch.size</strong></em></p>
-<p>当有多个消息需要被发送到同一个分区时，生产者会把它们放在同一个批次里。该参数指定了一个批次可以使用的内存大小，按照字节数计算。当批次被填满，批次里的所有消息会被发送出去。不过生产者井不一定都会等到批次被填满才发送，任意条数的消息都可能被发送。</p>
-<p><em><strong>client.id</strong></em></p>
-<p>此参数可以是任意的字符串，服务器会用它来识别消息的来源，一般配置在日志里。</p>
-<p><em><strong>max.in.flight.requests.per.connection</strong></em></p>
-<p>指定生产者在收到服务器响应之前可以发送多少消息，值越高吞吐量越大，占用的内存也越多。如果值为1 则保证消息是按照发送的顺序写入服务器。</p>
-<p><em><strong>timeout.ms、request.timeout.ms 和 metadata.fetch.timeout.ms</strong></em></p>
-<p><em>request.timeout.ms</em> 指定生产者在发送数据时等待服务器返回的响应时间</p>
-<p><em>metadata.fetch.timeout.ms</em> 指定了生产者在获取元数据（比如目标分区的<em>Leader</em>）时等待服务器返回响应的时间。</p>
-<p>如果等待时间超时，生产者要么重试发送数据，要么返回一个错误。<em>timeout.m</em>s 指定了<em>broker</em> 等待同步副本返回消息确认的时间，与 <em>asks</em> 的配置相匹配。</p>
-<p><em><strong>max.block.ms</strong></em></p>
-<p>此参数指定了在调用<em>send</em> 方法发送数据或使用<em>partitionFor(</em>) 方法获取元数据时生产者的阻塞时间。当生产者的发送缓冲区已满，或者没有可用的元数据时，这些方法就会阻塞。在阻塞时间达到<em>max.block.ms</em> 时，生产者会抛出超时异常。</p>
-<p><em><strong>max.request.size</strong></em></p>
-<p>用于控制生产者发送的请求大小。<em>Kafka</em> 会首先判断消息大小是否大于<em>maxRequestSize</em>，如果大于则直接抛出异常，不会继续执行追加消息到 batch。并且还会在<em>Sender</em> 线程发送数据到<em>broker</em> 之前，会使用<em>max.request.size</em> 限制发送请求数据的大小。</p>
-<p><em><strong>receive.buffer.bytes 和 send.buffer.bytes</strong></em></p>
-<p><em>Kafka</em> 是基于<em>TCP</em> 实现，为保证可靠的消息传输，这两个参数分别指定了<em>TCP Socket</em> 接收和发送数据包的缓冲区的大小。如果它们被设置为*-1*，就使用操作系统的默认值。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Kafka入门（一）基本概念]]></title>
-        <id>https://yuncheng1998.github.io/post/0ZA_7Pj3E/</id>
-        <link href="https://yuncheng1998.github.io/post/0ZA_7Pj3E/">
-        </link>
-        <updated>2021-05-14T05:35:53.000Z</updated>
-        <content type="html"><![CDATA[<h1 id="什么是mq">什么是MQ</h1>
-<p>消息引擎系统是一组规范。企业利用这组规范在不同系统之间传递语义准确的消息，实现松耦合的异步式数据传递。</p>
-<h1 id="为什么使用mq">为什么使用MQ</h1>
-<p>削峰填谷和松耦合</p>
-<p>削峰填谷指<strong>缓冲上下游瞬时突发流量</strong>，使其更平滑。特别是对于发送能力很强的上游系统，如果没有消息引擎的保护，下游系统可能会直接被压垮导致全链路服务雪崩。通过消息引擎，可以有效地对抗上游的流量冲击，将上游的峰填满到谷中，避免流量震荡。消息引擎系统的另一好处在于<strong>发送方和接收方的松耦合</strong>，减少了系统间不必要的交互。</p>
-<h1 id="kafka术语">Kafka术语</h1>
-<p><strong>消息</strong>：<em>Kafka</em> 中的数据单元，也被称为记录，可以把它看作数据库表中某一行的记录。</p>
-<p><strong>批次 <em>Batch</em></strong>：为提高效率， 消息会<strong>分批次</strong>写入 <em>Kafka</em>，批次就代指的是一组消息。</p>
-<p><strong>主题 <em>Topic</em></strong>：Topic是发布订阅的对象，可以为每个业务、每个应用甚至是每类数据都创建专属的主题。</p>
-<p><strong>分区 <em>Partition</em></strong>：<em>Topic</em> 可以被分为若干个分区 <em>（partition）</em> ，一个分区只属于一个主题。同主题的分区会部署在多个机器上，实现 <em>kafka</em> 的<strong>伸缩性</strong>。单一主题中的分区有序，但是<strong>无法保证主题中所有的分区有序</strong>。</p>
-<p><strong>客户端 <em>Clients</em></strong>：生产者和消费者的统称。可以同时运行多个生产者和消费者实例，这些实例不断地向集群中的多个主题生产和消费消息。</p>
-<p><strong>生产者 <em>Producer</em></strong>：向主题发布消息的客户端应用程序，通常持续不断地向一个或多个主题发送消息。</p>
-<p><strong>消费者 <em>Consumer</em></strong>：订阅这些主题消息的客户端应用程序。和生产者类似，消费者也能够同时订阅多个主题的消息。</p>
-<p><strong>消费者群组 <em>Consumer Group</em></strong>：由一个或多个消费者组成的群体。</p>
-<p><strong>偏移量 <em>Consumer Offset</em></strong> ：是一种元数据，一个不断递增的整数值，用来记录消费者发生重平衡时的位置，以便用来恢复数据。</p>
-<p><strong>服务端 <em>Broker</em></strong>：<em>Kafka</em>的服务器端，负责接收和处理客户端发送过来的请求，以及对消息进行持久化。常见的做法是将不同的<em>Broker</em> 分散运行在不同的机器上，如果某台机器宕机，上面运行的所有<em>Broker</em> 进程都挂掉了，其他机器上的<em>Broker</em> 也依然能够对外提供服务。这是<em>Kafka</em>提供高可用的手段之一。</p>
-<p><strong>集群 <em>cluster</em></strong>：由一个或多个 <em>Broker</em> 组成，每个集群都有一个 <em>Broker</em> 同时充当了集群控制器的角色（自动从集群中选举出来）。</p>
-<p><strong>副本 <em>Replica</em></strong>：消息的备份叫做副本，副本的数量是可以配置的，<em>Kafka</em> 定义两类副本：领导者副本*（Leader Replica）<em>和追随者副本</em>（Follower Replica）*，前者对外提供服务，后者被动跟随。</p>
-<p><strong>重平衡 <em>Rebalance</em></strong>：消费者组内某个消费者实例挂掉后，其他消费者实例自动重新分配订阅主题分区的过程。是消费者端实现高可用的重要手段。</p>
-<h1 id="kafka的特性">Kafka的特性</h1>
-<ol>
-<li>高吞吐、低延迟：收发消息非常快，每秒可以处理几十万条消息，最低延迟只有几毫秒。</li>
-<li>高伸缩性：每个主题包含多个分区，主题中的分区可以分布在不同的主机中。</li>
-<li>持久性、可靠性：允许数据的持久化存储到磁盘，并支持数据备份防止数据丢失。</li>
-<li>容错性：允许集群中的节点宕机，集群仍能够正常工作。</li>
-<li>高并发：支持数千个客户端同时读写。</li>
-</ol>
-<h1 id="kafka-的使用场景">Kafka 的使用场景</h1>
-<p>活动跟踪：Kafka 可以用来跟踪用户行为，比如我们经常回去淘宝购物，你打开淘宝的那一刻，你的登陆信息，登陆次数都会作为消息传输到 Kafka ，当你浏览购物的时候，你的浏览信息，你的搜索指数，你的购物爱好都会作为一个个消息传递给 Kafka ，这样就可以生成报告，可以做智能推荐，购买喜好等。</p>
-<p>传递消息：Kafka 另外一个基本用途是传递消息，应用程序向用户发送通知就是通过传递消息来实现的，这些应用组件可以生成消息，而不需要关心消息的格式，也不需要关心消息是如何发送的。</p>
-<p>度量指标：Kafka也经常用来记录运营监控数据。包括收集各种分布式应用的数据，生产各种操作的集中反馈，比如报警和报告。</p>
-<p>日志记录：Kafka 的基本概念来源于提交日志，比如我们可以把数据库的更新发送到 Kafka 上，用来记录数据库的更新时间，通过kafka以统一接口服务的方式开放给各种consumer，例如hadoop、Hbase、Solr等。</p>
-<p>流式处理：流式处理是有一个能够提供多种应用程序的领域。</p>
-<p>限流削峰：Kafka 多用于互联网领域某一时刻请求特别多的情况下，可以把请求写入Kafka 中，避免直接请求后端程序导致服务崩溃。</p>
-<h1 id="kafka-的消息队列">Kafka 的消息队列</h1>
-<p>点对点模式：一个生产者对应一个消费者<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970642605.png" alt="" loading="lazy"></p>
-<p>发布订阅模式：一个/多个生产者对应多个消费者<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970659080.png" alt="" loading="lazy"></p>
-<h1 id="kafka-系统架构">Kafka 系统架构</h1>
-<p>一个典型的 Kafka 集群中包含若干Producer，若干broker，若干Consumer Group，以及一个Zookeeper集群。Kafka通过Zookeeper管理集群配置，选举leader，以及在Consumer Group发生变化时进行rebalance。Producer使用push模式将消息发布到broker，Consumer使用pull模式从broker订阅并消费消息。<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970691187.png" alt="" loading="lazy"></p>
-<h1 id="核心-api">核心 API</h1>
-<p>有四个核心API：</p>
-<p>Producer API：支持应用程序向一个或多个主题上发送消息记录。</p>
-<p>Consumer API：支持应用程序订阅一个或多个主题并处理生成的记录流。</p>
-<p>Streams API：支持应用程序作为流处理器，从一个或多个主题中消费输入流并为其生成输出流，有效的将输入流转换为输出流。</p>
-<p>Connector API，将<em>Kafka</em> 主题连接到生产者和消费者。</p>
 ]]></content>
     </entry>
 </feed>
