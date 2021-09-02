@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://yuncheng1998.github.io</id>
     <title>云程的BLOG</title>
-    <updated>2021-09-02T02:45:20.890Z</updated>
+    <updated>2021-09-02T02:50:33.427Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://yuncheng1998.github.io"/>
     <link rel="self" href="https://yuncheng1998.github.io/atom.xml"/>
@@ -30,153 +30,6 @@
 ]]></content>
     </entry>
     <entry>
-        <title type="html"><![CDATA[延时队列]]></title>
-        <id>https://yuncheng1998.github.io/post/U2aPPg3VM/</id>
-        <link href="https://yuncheng1998.github.io/post/U2aPPg3VM/">
-        </link>
-        <updated>2021-06-01T02:22:17.000Z</updated>
-        <content type="html"><![CDATA[<p>dockone.io/article/10139</p>
-<p>当应用要求操作事件是顺序的，并且事件由同一个终端设备发送，通过设备<em>ID</em>计算<em>Hash</em>到同一个节点服务处理，这之中不存在时钟一致性问题，但由于事件发送是异步的，所以接收可能乱序，再比如在大数据系统中分析<em>OAuth</em>关系，<em>OAuth</em>表记录的是<em>A</em>应用的<em>X</em>用户与<em>B</em>应用的<em>Y</em>用户的关联（如果<em>B</em>应用没有对应的用户则<em>Y</em>用户为新增记录），但用户表、应用表和<em>OAuth</em>表都是分开采集的，即不能保证分析<em>OAuth</em>表时用户表对应的用户就一定已经存在。对于这类需求比较通用的解决方案是使用延迟队列。</p>
-<p>什么是延时队列？顾名思义：首先它要具有队列的特性，再给它附加一个延迟消费队列消息的功能，也就是说可以指定队列中的消息在哪个时间点被消费。</p>
-<h1 id="delayqueue"><em>DelayQueue</em></h1>
-<p><em>DelayQueue</em>是一个<em>BlockingQueue</em>（无界阻塞）队列，它封装了一个使用完全二叉堆排序元素的<em>PriorityQueue</em>（优先队列），在添加元素时，使用<em>Delay</em>（延迟时间）作为排序条件，延迟最小的元素会优先放在队首。我们可以队列中的元素只有到了<em>Delay</em>时间才允许从队列中取出，从而得到延时队列。<br>
-<img src="https://yuncheng1998.github.io/post-images/1622514280644.png" alt="" loading="lazy"></p>
-<pre><code class="language-java">@Data
-public class Order implements Delayed {
-
-  private final long timestamp;
-
-  private final String name;
-
-  public Order(String name, long timestamp, TimeUnit unit) {
-    this.timestamp = System.currentTimeMillis() + (timestamp &gt; 0 ? unit.toMillis(timestamp) : 0);
-    this.name = name;
-  }
-
-  /**
-   * 返回剩余的延迟
-   * poll方法根据该方法判断，只有延迟&lt;0才出队
-   */
-  @Override
-  public long getDelay(TimeUnit unit) {
-    return timestamp - System.currentTimeMillis();
-  }
-
-  /**
-   * 决定堆排序
-   */
-  @Override
-  public int compareTo(Delayed o) {
-    Order Order = (Order) o;
-    long diff = this.timestamp - Order.timestamp;
-    if (diff &lt;= 0) {
-      return -1;
-    } else {
-      return 1;
-    }
-  }
-}
-</code></pre>
-<p><em>DelayQueue</em>的<em>put</em>方法内部使用了<em>ReentrantLock</em>锁进行线程同步，因此是线程安全的。<em>DelayQueue</em>还提供了两种出队的方法<em>poll()<em>和</em>take()</em> ， <em>poll()<em>为非阻塞获取，没有到期的元素直接返回</em>null</em>；*take()*阻塞方式获取，没有到期的元素线程将会等待。</p>
-<pre><code class="language-java">public static void main(String[] args) throws InterruptedException {
-    Order order1 = new Order(&quot;订单1&quot;, 5, TimeUnit.SECONDS);
-    Order order2 = new Order(&quot;订单2&quot;, 10, TimeUnit.SECONDS);
-    Order order3 = new Order(&quot;订单3&quot;, 15, TimeUnit.SECONDS);
-    DelayQueue&lt;Order&gt; delayQueue = new DelayQueue&lt;&gt;();
-    delayQueue.put(order1);
-    delayQueue.put(order3);
-    delayQueue.put(order2);
-
-    System.out.println(&quot;订单延迟队列开始时间:&quot; + new DateTime().toString(&quot;HH:mm:ss&quot;));
-    while (delayQueue.size() != 0) {
-      // 取队列头部元素是否过期
-      Order task = delayQueue.poll();
-      if (task != null) {
-        System.out.format(&quot;%s被取消, 时间:{%s}\n&quot;, task.getName(), new DateTime().toString(&quot;HH:mm:ss&quot;));
-      }
-      Thread.sleep(1000);
-    }
-}
-</code></pre>
-<p>结果</p>
-<blockquote>
-<p>订单1被取消, 时间:{15:49:38}<br>
-订单2被取消, 时间:{15:49:43}<br>
-订单3被取消, 时间:{15:49:49}</p>
-</blockquote>
-<h1 id="quartz-定时任务"><em>Quartz</em> 定时任务</h1>
-<p><em>Quartz</em>一款非常经典任务调度框架，在<em>Redis</em>、<em>RabbitMQ</em>还未广泛应用时，超时未支付取消订单功能都是由定时任务实现的。定时任务它有一定的周期性，可能很多单子已经超时，但还没到达触发执行的时间点，那么就会造成订单处理的不够及时。</p>
-<h1 id="redis-zset"><em>Redis Zset</em></h1>
-<p>利用<em>Redis</em>的<em>Zset</em>可以实现延迟队列的效果，通过设置<em>Score</em>属性为集合中的成员进行从小到大的排序。</p>
-<pre><code class="language-scala">// ----------- 延迟消息写入逻辑 -----------
-// 保存消息内容，kind是消息类型，如订单到期、OAuth延迟处理等，id是消息的记录Id
-redis.hset(&quot;delay:body:&quot;+timerTaskReq.kind, timerTaskReq.id, toJsonString(timerTaskReq))
-// 删除之前的延迟时间（如果存在的话）
-redis.zrem(&quot;delay:queue:&quot; + timerTaskReq.kind, timerTaskReq.id)
-// 添加新的延迟时间，timerTaskReq.execMs为期望执行（到期）的时间，这里用这个时间做为评分
-redis.zadd(&quot;delay:queue:&quot; + timerTaskReq.kind, timerTaskReq.execMs, timerTaskReq.id)
-// ----------------------------------------
-
-// -------- 延迟消息获取及发送逻辑 --------
-// kinds为所有的消息类型
-kinds.map{
-    kind -&gt;
-    // 获取过期的消息Id，即评分为0到当前时间戳
-    var expireTaskIds = redis.zrangebyscore(&quot;delay:queue:&quot; + kind, 0, currentTimeMs)
-    // 获取对应的消息内容
-    var expireTasks = redis.hmget(&quot;delay:body:&quot; + kind, expireTaskIds)
-    // 删除过期的消息Id
-    redis.zremMany(&quot;delay:queue:&quot; + kind, expireTaskIds)
-    // 删除过期的消息内容
-    redis.hdelMany(&quot;delay:body:&quot; + kind, expireTaskIds)
-    // 发送消息
-    sendTask(expireTasks)
-}
-</code></pre>
-<p>利用<em>Redis</em>的<em>key</em>过期回调事件：开启监听<em>key</em>是否过期的事件，一旦<em>key</em>过期会触发一个<em>callback</em>事件。但不能应用其完成延迟队列，因为<em>Redis</em>只在过期键被删除的时候通知，而不是键的生存时间变为<em>0</em>的时候立马通知。过期键的删除是由一个后台任务执行，为不影响关键业务，后台任务被严格限制，默认为一秒执行<em>10</em>次，一次最多<em>250</em>ms，可通过<em>hz</em>参数调整，但当过期键比例很高时仍然会出现大量的通知的延迟。</p>
-<h1 id="rabbitmq-延时队列"><em>RabbitMQ</em> 延时队列</h1>
-<p><em>RabbitMQ</em> 存在两个属性： *TTL（Time To Live）*和 <em>DLX（Dead Letter Exchange）</em>。</p>
-<p><em>TTL</em>指消息存活的时间，<em>RabbitMQ</em>通过<em>x-message-tt</em>参数来设置指定队列（队列中所有消息都具有相同的过期时间）或消息（某一条消息设置过期时间）上消息的存活时间，它的值是一个非负整数，单位为微秒。如果同时设置队列和队列中消息的<em>TTL</em>，则以较小的值为准。超过TTL的消息则成为<em>Dead Letter</em>（死信）。</p>
-<p>死信可以重新路由到另一个<em>Exchange</em>（交换机），让消息重新被消费。通过设置<em>x-dead-letter-exchange</em>（<em>Dead Letter</em>重新路的交换机）和<em>x-dead-letter-routing-key</em>（转发的队列）来实现。<br>
-<img src="https://yuncheng1998.github.io/post-images/1622514315383.png" alt="" loading="lazy"></p>
-<p>发送消息时指定消息延迟的时间</p>
-<pre><code class="language-java">public void send(String delayTimes) {
-    amqpTemplate.convertAndSend(&quot;order.pay.exchange&quot;, &quot;order.pay.queue&quot;, &quot;延迟数据&quot;, message -&gt; {
-        // 设置延迟毫秒值
-        message.getMessageProperties().setExpiration(String.valueOf(delayTimes));
-        return message;
-    });
-} 
-</code></pre>
-<p>设置延迟队列出现死信后的转发规则。</p>
-<pre><code class="language-java">@Bean(name = &quot;order.delay.queue&quot;)
-public Queue getMessageQueue() {
-    return QueueBuilder
-            .durable(RabbitConstant.DEAD_LETTER_QUEUE)
-            // 配置到期后转发的交换
-            .withArgument(&quot;x-dead-letter-exchange&quot;, &quot;order.close.exchange&quot;)
-            // 配置到期后转发的路由键
-            .withArgument(&quot;x-dead-letter-routing-key&quot;, &quot;order.close.queue&quot;)
-            .build();
-} 
-</code></pre>
-<h1 id="时间轮">时间轮</h1>
-<p>https://www.cnblogs.com/luozhiyun/p/12075326.html</p>
-<p>时间轮能够高效地利用线程资源来进行批量化调度，将任务绑定到同一个的调度器上面，使用这个调度器来进行任务的管理、触发以及运行。时间轮的结构如下所示<br>
-<img src="https://yuncheng1998.github.io/post-images/1622514245143.png" alt="" loading="lazy"></p>
-<p>左侧是一个存储定时任务的环形队列，底层采用数组实现，数组中的元素是一个存放定时任务的环形的双向链表，节点封装了真正的定时任务（<em>TimerTask</em>）。时间轮由多个时间格组成，每个时间格代表当前时间轮的基本时间跨度（<em>tickDuration</em>）。时间轮的时间格个数是固定的，可用 <em>wheel.length</em> 来表示。时间轮的表盘指针（<em>tick</em>）表示时间轮当前指针指向的<em>bucket</em>，此时处理对于列表中的所有任务。</p>
-<h2 id="时间轮运行逻辑">时间轮运行逻辑</h2>
-<p>时间轮在启动时记录当前启动的时间<em>startTime</em>，在添加任务时首先计算延迟时间（<em>deadline</em>），比如一个任务的延迟时间为<em>24ms</em>，任务将放在：当前的时间（<em>currentTime</em>）+<em>24ms</em>-<em>startTime</em> 所在的<em>bucket</em>的队列中。</p>
-<p>时间轮运行后，会遍历<em>tick</em>指向的<em>TimerTask</em>列表，计算如下参数：</p>
-<ol>
-<li><strong><em>TimerTask</em>的总共延迟的次数</strong>：将每个任务的延迟时间（<em>deadline</em>）/<em>tickDuration</em> 计算出<em>tick</em>需要总共跳动的次数。</li>
-<li><strong>时间轮<em>round</em>次数</strong>：(tick走的总次数-当前tick数量) / 时间格个数。比如<em>tickDuration</em>为<em>1ms</em>，时间格个数为<em>20</em>个，那么时间轮走一圈需要<em>20ms</em>，如果要添加进一个延时为<em>24ms</em>的数据，如果当前的tick为0，那么计算出的轮数为1，当指针运行第一圈时将<em>round</em>减一，运行第二圈才可以将轮数<em>round</em>减为0并会运行。</li>
-<li>任务需要放置到时间轮的槽位，放入到槽位链表最后。</li>
-</ol>
-<p>参考：<a href="https://www.cnblogs.com/luozhiyun/p/12075326.html">时间轮算法（TimingWheel）是如何实现的？</a></p>
-]]></content>
-    </entry>
-    <entry>
         <title type="html"><![CDATA[顺序处理]]></title>
         <id>https://yuncheng1998.github.io/post/7xRdbGS0J/</id>
         <link href="https://yuncheng1998.github.io/post/7xRdbGS0J/">
@@ -190,217 +43,6 @@ public Queue getMessageQueue() {
 <p><em><strong>Lamport Timestamps</strong></em>：上面说的都是物理时钟，而<em>Lamport</em>提出的是逻辑时钟概念，通过为每一操作带上本地或接收到消息的时间戳来解决访问链路的顺序问题。<em>Lamport Timestamps</em>的局限只能处理有相关性记录的顺序，像上文说到数据库日志记录就无能为力了。</p>
 <p>上述方案可以解决时钟一致性，但这远远不够。我们用<em>MQ</em>做服务解耦就会经常遇到顺序问题，比如将用户的关键操作流程通过<em>Kafka</em>传送到日志服务，日志就要保证顺序写入。但目前<em>Kafka</em>及主流的<em>MQ</em>都无法保证严格顺序，因为成本太高：要先保证生产者都同步生产消息到<em>MQ</em>，<em>MQ</em>的存储要避免多个写入节点，并且消费者只能有一个，进行逐条消费等，这在性能、可用性上都大打折扣。这时我们只能根据用户<em>Id</em>计算<em>hash</em>后分配到相同的写入节点（对应于<em>Kafka</em>的<em>Partition</em>），这样就能做到同一用户的日志消费顺序等同于日志的发送（同步发送方式）顺序。</p>
 <p>顺序处理的成本不低，在开发中我们应该尽量避免。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[分布式锁]]></title>
-        <id>https://yuncheng1998.github.io/post/FpNwKynsD/</id>
-        <link href="https://yuncheng1998.github.io/post/FpNwKynsD/">
-        </link>
-        <updated>2021-05-28T14:56:51.000Z</updated>
-        <content type="html"><![CDATA[<blockquote>
-<p>如非必要切勿用锁。一方面锁会将并行逻辑转成串行严重影响性能，另一方面还要考虑锁的容错，处理不当可能导致死锁。</p>
-</blockquote>
-<h1 id="分布式锁的替代方案">分布式锁的替代方案</h1>
-<h2 id="set化后的mq替代分布式锁">Set化后的MQ替代分布式锁</h2>
-<p>可以按用户ID做Set（用户ID % Set数）进而分成多个组，为不同的组创建不同的MQ队列，这样一个用户同一时间只在一个队列中，一个队列的处理是串行化的，实现了锁的功能，同时又有多个Set来完成并行化，在性能上会好于分布式锁。</p>
-<h2 id="使用乐观锁">使用乐观锁</h2>
-<p>创建一个更新版本字段（update_version）,每次更新时版本加1，更新的条件是版本号要等于传入版本号：</p>
-<pre><code class="language-java">  var (balance,currentVersion) = db.account.getBalanceAndVersion(id)
-  if(balance &lt; amount){
-    return error(&quot;余额少于扣款金额&quot;)
-  }
-  // 此操作对应的SQL: UPDATE account SET balance = balance  - &lt;amount&gt; , update_verison = update_verison + 1 WHERE id = &lt;id&gt; AND update_version = &lt;currentVersion&gt;
-  if(db.account.updateBalance(id, -amount, currentVersion) == 0){
-  return error(&quot;扣款失败&quot;) // 或递归执行此代码进行重试
-  }
-</code></pre>
-<h1 id="使用分布式锁需要注意的问题">使用分布式锁需要注意的问题</h1>
-<h2 id="锁释放与超时">锁释放与超时</h2>
-<p>在单机情况下，我们只需要在使用完锁后在finally代码中将其释放掉，但在分布式环境下由于网络是不可靠的，节点可能宕机，会导致锁无法释放，所以我们必须要设置超时时间。超时时间设置过长会导致服务异常后无法及时获取新的锁，过短又有可能在业务没有执行完锁提前释放了。优雅但复杂的方法是使用心跳超时设置，即与占有锁的服务保持心跳，在心跳超时后再释放锁。</p>
-<h2 id="性能及高可用">性能及高可用</h2>
-<p>出于性能考虑，一般分布式锁都是非公平锁，如果要保证加锁顺序而选用公平锁时要注意对性能的影响，加解锁操作本身要保证性能及可用性，避免单点，锁信息要持久化，慎用自旋避免CPU浪费。</p>
-<blockquote>
-<p>在激烈竞争的情况下，非公平锁的性能高于公平锁的性能的一个原因是：在恢复一个被挂起的线程与该线程真正开始运行之间存在着严重的延迟。假设线程 A 持有一个锁，并且线程 B 请求这个锁。由于这个锁已被线程 A 持有，因此 B 将被挂起。当 A 释放锁时，B 将被唤醒，因此会再次尝试获取锁。与此同时如果 C 也请求这个锁,那么 C 很可能会在 B 被完全唤醒之前获得、使用以及释放这个锁。这样 的情况是一种“双赢”的局面：B 获得锁的时刻并没有推迟，C 更早地获得了锁，并且吞吐量也获得了􏰀高。</p>
-<p>当持有锁的时间相对较长，或者请求锁的平均时间间隔较长，那么应该使用公平锁。在这些情况下，”插队”带来的吞吐量提升(当锁处于可用状态时，线程却还处于被唤醒的过程中)则可能不会出现</p>
-<p><em>—— 《Java并发编程实战》</em></p>
-</blockquote>
-<h2 id="数据一致性">数据一致性</h2>
-<p>分布式锁要合理设置锁标记以区分是哪个实例、哪个线程的操作，可重入锁要做好计数及相应的unlock次数，同时必须保证数据的一致，这要求我们只能选择CP特性的服务作为分布式锁的中间件。</p>
-<h1 id="主流的分布式锁">主流的分布式锁</h1>
-<h2 id="关系型数据库">关系型数据库</h2>
-<p>由关系型数据库的某些特性来实现，比如使用主键唯一性约束及数据一致来确保同一时间只有一个请求能获得锁，这一方案实现简单，但对高并发场景或可重入时存在比较大的性能瓶颈。</p>
-<h2 id="redis">Redis</h2>
-<p>可使用Redis单线程、原子化操作（<em>setnx</em>）来实现，这一方案也很简单，但因为没有原子化的值比较方法，无法原子化确认占用锁的是否是当前实例的当前线程导致比较难实现重入锁，另外Redis单节点有高可用问题，多节点引入RedLock也存在比较大的<a href="https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html">争议</a>。当然在绝大多数情况下大家还是可以放心使用的。</p>
-<h2 id="zookeeper">Zookeeper</h2>
-<p>可使用Zookeeper的持久节点（PERSISTENT）、临时节点（EPHEMERAL），时序节点（SEQUENTIAL ）的特性组合及watcher接口实现，这一方案可保证最为严格的数据一致性、在性能及高可用也有着比较好的表现，推荐对一致性高要求极高、并发量大的场景使用。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[分布式缓存的设计]]></title>
-        <id>https://yuncheng1998.github.io/post/00KtfUfg0/</id>
-        <link href="https://yuncheng1998.github.io/post/00KtfUfg0/">
-        </link>
-        <updated>2021-05-28T06:37:36.000Z</updated>
-        <content type="html"><![CDATA[<p>相比本地缓存，分布式缓存在设计使用上需要注意以下几点：</p>
-<h2 id="缓存失效">缓存失效</h2>
-<p>在用缓存时不可避免地会涉及缓存失效，失效有多种原因，比如过期时间设置不合理大量Key同时过期，请求直接访问数据库进而导致数据库压力陡增，再比如批量重建缓存导致缓存雪崩。对这一问题有多种解决方案，就仅针对缓存本身而言需要错开各Key过期时间及分批次刷新</p>
-<h2 id="缓存穿透">缓存穿透</h2>
-<p>在缓存失效中更为普遍的是缓存穿透：请求一个数据库不存在的记录，程序上不去缓存这些不存在记录对应的key，进而导致每次请求都去查数据库，这是缓存设计最容易被遗漏的地方。一般情况下不会有问题，不会有大量这种“错误”的请求，但如果被攻击利用就可能是致命的，原本要保护数据库资源的缓存完全失效。知道原理后解决的方案也简单：无论请求条件在数据库中存不存在都加入到缓存即可。当然这样会带来两个问题：1）现在为空不代表以后一直为空，2）可能存在大量值为空的垃圾记录。第一个问题是关于缓存一致性，如果Key为查询条件，需要设置业务上比较合理的过期时间，如果key为Id，只要在持久化到数据库时更新缓存中Id对应的值即可，第二个问题多为攻击情况下会产生很多为空的记录，以Redis为例，常用操作（时间复杂度为O(1)）对Key的数量并不敏感，这些记录只会占用一定的空间，对性能影响有限，当然考虑存储的压力我们也可以用BloomFilter或Hyperloglog来避免这一问题，如果是IP路由则本地BloomFilter或Hyperloglog，反之也可以使用分布式方案，分布式BloomFilter可用如Redis的Orestes-Bloomfilter、Rebloom （以Redis模块的方式加载）、Redisson，分布式Hyperloglog为Redis自带的数据结构。缓存穿透还有一种特殊的场景：高并发访问某一新增的、未被缓存的记录，在第一条请求从数据库读取到加入缓存并生效的时间窗口内大量的并发会穿透缓存给数据库带来很大的压力，这也极有可能被用于攻击，解决的方法可以是限流，当然这种做法过于粗暴，限流应该是保障系统可用性的最后几道屏障，是不得以而为之的，可以是数据变更时先写缓存再写数据库，这可能会带来一致性风险，也可以是写完数据库后立刻更新缓存（不等到读取时再更新缓存），但并不是所有记录都需要缓存，这可能会导致大量不必要的缓存开销，还可以是对穿透到数据库查询的代码进行加锁，笔者认为这种方法最为优雅，实现的伪代码如下：</p>
-<pre><code class="language-java">  /**
-    * 假定有并发请求1、2、3
-    * 请求1先进入synchronized代码块，请求2、3等待
-    * 请求1会查询数据库并更新缓存，退出synchronized
-    * 请求2、3依次进入synchronized并命中缓存
-    */
-  // 先从缓存读取对应id的信息流
-  var record = cache.get(&quot;feed:&quot; + id)
-  if (record == null) {
-    // 缓存未命中时加锁，要求串行化执行
-    synchronized {
-      // 再次尝试从缓存读取对应id的信息流
-      record = cache.get(&quot;feed:&quot; + id)
-      if (record == null) {
-        // 从数据库读取并更新缓存
-        record = db.feed.get(id)
-        cache.put(&quot;feed:&quot; + id, record)
-      }
-    }
-  }
-</code></pre>
-<h2 id="缓存一致性">缓存一致性</h2>
-<p>缓存与数据库的数据一致性视不同情况而定，大部分场景下都要求是一致的，即数据库数据变更要同步刷新到缓存中，但刷新缓存可能会是一个耗时、耗IO的操作，尤其是数据批量变更时缓存数据的延时不可忽视，另外存在多级缓存时也需要考虑缓存内的数据同步，在缓存设计时数据同步及一致性问题要重点考虑</p>
-<h2 id="热点数据">热点数据</h2>
-<p>现实场景中我们的数据不大可能做到均匀分布，必定会出现冷热分化，缓存用于存放热点数据，但有一些特殊情况下会出了极热点的数据，这些数据会对分布式缓存的个别节点造成很大的压力，如业务上存在这种场景需要考虑做多级缓存为这些极热点的数据添加前置缓存层或是将Key Hash化以规避数据倾斜</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[分布式事务]]></title>
-        <id>https://yuncheng1998.github.io/post/kX9yjKh02/</id>
-        <link href="https://yuncheng1998.github.io/post/kX9yjKh02/">
-        </link>
-        <updated>2021-05-28T06:22:11.000Z</updated>
-        <content type="html"><![CDATA[<p>分布式环境下我们必须假定网络是不可靠，它可能中断、超时，消息可能乱序、丢包，所以分布式事务就是基于这个前提下设计的。常见的分布式事务有二阶段提交、补偿型事务和通知型事务。</p>
-<h1 id="二阶段提交">二阶段提交</h1>
-<p>二阶段提交（<em>Two-phase commit protocol</em>）简称2PC是最基础的分布式事务方案。它将事务分为提交请求和提交两个阶段，另外它还定义了两个角色：协调器（<em>coordinator</em>）、参与者（<em>cohorts</em>）</p>
-<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1622183011309.png" alt="" loading="lazy"></figure>
-<h2 id="提交请求阶段">提交请求阶段</h2>
-<ol>
-<li>协调器向所有参与者发送事务提交请求命令，并等待所有参与者的答复。</li>
-<li>每个参与者执行收到的事务提交请求。</li>
-<li>每个参与者执行事务成功则返回同意（<em>agreement</em>），反之返回中止（<em>abort</em>）。</li>
-</ol>
-<h2 id="提交阶段">提交阶段</h2>
-<ol>
-<li>如果协调器收到的都是同意，那么它：
-<ol>
-<li>向所有参与者发送提交（<em>commit</em>）命令。</li>
-<li>每个参与者执行提交操作，释放上一步打开的本地锁和资源。</li>
-<li>每个参与者返回确认（<em>acknowledgment</em>）。</li>
-<li>协调器在收到所有确认后完成事务。</li>
-</ol>
-</li>
-<li>如果协调器收到有包含中止命令，那么它：
-<ol>
-<li>向所有参与者发送回滚（<em>rollback</em>）命令。</li>
-<li>每个参与者执行回滚操作，释放上一步打开的本地锁和资源。</li>
-<li>每个参与者返回确认（<em>acknowledgment</em>）。</li>
-<li>协调器在收到所有确认后回滚事务。</li>
-</ol>
-</li>
-</ol>
-<h2 id="分析">分析</h2>
-<p>2PC是CP设计，势必会损失可用性，它的问题在于：</p>
-<ul>
-<li>同步阻塞，执行中所有参与者的事务都会阻塞，所占的锁及资源不会释放。</li>
-<li>数据不一致，在<strong>提交阶段</strong>如果出现网络故障部分参与者可能会收不到提交命令从而导致数据不一致。</li>
-<li>单点故障，作为事务处理重要组成的协调器存在单点问题。</li>
-</ul>
-<h1 id="补偿型事务">补偿型事务</h1>
-<p>补偿性事务（<em>Try-Confirm-Cancel</em>）简称<em>TCC</em>，<em>Try</em> 对应于<em>2PC</em> 的提交请求阶段，<em>Confirm</em> 对应的提交阶段的成功处理，<em>Cancel</em> 对应的是提交阶段的回滚处理，但与<em>2PC</em> 本质的区别在于：<em>2PC</em> 是两个阶段只有一个事务，<strong>而<em>TCC</em> 分别对应了三个事务操作</strong>。</p>
-<h2 id="try-阶段"><em>Try</em> 阶段</h2>
-<p>完成业务检查及资源预处理，以订单支付为例，用户发起订单支付后对应冻结操作：</p>
-<ol>
-<li>资金服务在本地事务下冻结支付金额（<em>UPDATE account SET balance_freeze = balance_freeze+&lt;支付金额&gt; WHERE id = &lt;当前账户&gt;</em>）</li>
-<li>优惠券服务在本地事务下冻结使用的优惠券（<em>UPDATE coupon SET status = 'FREEZE' WHERE id = &lt;使用的优惠券&gt;</em>）</li>
-<li>积分服务在本地事务下冻结支付成功后奖励的积分（<em>UPDATE account SET points_freeze = points_freeze+&lt;奖励积分&gt; WHERE id = &lt;当前账户&gt;</em>）</li>
-</ol>
-<h2 id="confirm-阶段"><em>Confirm</em> 阶段</h2>
-<p>确认并执行业务，执行只涉及<em>Try</em> 阶段预处理的资源：</p>
-<ol>
-<li>资金服务在本地事务下解冻支付金额并完成实际扣款（<em>UPDATE account SET balance_freeze = balance_freeze-&lt;支付金额&gt; , balance = balance+&lt;支付金额&gt; WHERE id = &lt;当前账户&gt;</em>）</li>
-<li>优惠券服务在本地事务下解冻使用的优惠券并完成优惠券的使用（<em>UPDATE coupon SET status = USED WHERE id = &lt;使用的优惠券&gt;</em>）</li>
-<li>积分服务在本地事务下解冻积分并完成积分奖励（<em>UPDATE account SET points_freeze = points_freeze-&lt;奖励积分&gt; , points = points+&lt;奖励积分&gt;  WHERE id = &lt;当前账户&gt;</em>）</li>
-</ol>
-<h2 id="cancel-阶段"><em>Cancel</em> 阶段</h2>
-<p>取消执行的业务，释放<em>Try</em> 阶段预留的资源，如果出现余额不足、优惠券不可用等情况则执行回滚操作，执行<em>Try</em> 的逆向操作，使最终结果看上去没有发生过一样，如对应的：</p>
-<ol>
-<li>积分服务在本地事务下解冻积分（<em>UPDATE account SET points_freeze = points_freeze-&lt;奖励积分&gt; WHERE id = &lt;当前账户&gt;</em>）</li>
-<li>优惠券服务在本地事务下解冻使用的优惠券（<em>UPDATE coupon SET status = UNUSED WHERE id = &lt;使用的优惠券&gt;</em>）</li>
-<li>资金服务在本地事务下解冻支付金额（<em>UPDATE account SET balance_freeze = balance_freeze-&lt;支付金额&gt; WHERE id = &lt;当前账户&gt;</em>）</li>
-</ol>
-<h2 id="分析-2">分析</h2>
-<p>相比于2PC中所有请求提交阶段占用的资源都在等待提交阶段释放，两个阶段之间需要等待所有参与者响应，所以花费的时间会比较久，TCC不存在全局长事务，它将一个大事务分成三个阶段，每个阶段的每个实例都有一个个独立的本地事务，每个本地事务都各自提交，只在需要的时候回滚，所以TCC有着比2PC更高的性能。</p>
-<p>但事务补偿对业务的侵入比较大，一次事务需要涉及3个阶段的代码编写，一方面提高了开发维护的成本，另一方面它也不适用于无法自己主导的工程，比如与三方服务之间的事务处理。</p>
-<h1 id="通知型事务">通知型事务</h1>
-<p>通知型事务为了解决2PC性能问题及TCC业务侵入问题，它将事务看作消息，使用MQ来传递，分为可靠通知和最大努力通知。</p>
-<h2 id="最大努力通知">最大努力通知</h2>
-<p>最大努力通知的前提是服务存在依赖，上游成功后下游要求必定成功，如果失败会有一定的策略重试，如果重试策略还失败，上游服务需要提供一个查询的接口以便获取上游服务事务成功后的数据。这一方案最直接的使用场景是跨系统间的数据处理，比如业务系统与支付网关，在支付网关支付成功后意味着钱已经流转，网关会通知（异步回调）作为下游的业务系统，一次失败后再会重试几次，如果再失败就需要业务系统主动来网关查询处理结果，而这过程中要求下游回调接口必须幂等。</p>
-<h2 id="可靠通知">可靠通知</h2>
-<p>可以理解为支持回滚的最大努通知，在重试策略也失败后可靠通知会执行事务回滚，这样一来就没有服务依赖及必须成功的约束，反之服务需要提供事务回滚逻辑，对业务有少许侵入。</p>
-<h1 id="分布式事务设计原则">分布式事务设计原则</h1>
-<p>无论是哪种分布式事务，都需要类似有事务协调器这一服务，都需要确保以下几个内容：</p>
-<ul>
-<li>事务协调器与各参与者（业务服务）内的调用必须幂等，即重试不会导致数据异常。</li>
-<li>事务协调器与各参与者（业务服务）内的调用必须有超时时间，不能无限或长时间地等待。</li>
-<li>事务必须能确保发送到事务协调器，这是大前提，对于MQ而言可使用AMQP规范的实现，如RabbitMQ，开启AMQP的事务机制</li>
-</ul>
-<p>我们回看分布式事务下的ACID保证，原子性（Atomicity）和持久性（Durability）与传统事务无异，但一致性（Consistency）与隔离性（Isolation）上除了2PC、3PC完全满足外不同实现的补偿型与通知型事务都有或多或少的缺失，它们都强调最终一致性，即允许在一段可接受的时间内各节点数据不一致，由于它们多半是将大事务分解成一个个本地小事务，所以在一段时间也存在隔离性问题。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[幂等]]></title>
-        <id>https://yuncheng1998.github.io/post/RPVoJEAnp/</id>
-        <link href="https://yuncheng1998.github.io/post/RPVoJEAnp/">
-        </link>
-        <updated>2021-05-28T03:36:10.000Z</updated>
-        <content type="html"><![CDATA[<h1 id="何为幂等">何为幂等</h1>
-<p>在程序中如果相同条件下多次请求对资源的影响表现一致则称请求为幂等请求，对应的接口为幂等接口。</p>
-<p>在分布式环境下强调幂等是由于对通信链路的不信任，请求可能由于网络问题而出错进而需要做重试，如果接口没有做请求去重就可能导致重复处理引发数据错误，所以在分布式系统中接口的幂等性非常重要。</p>
-<h1 id="幂等的解决方案">幂等的解决方案</h1>
-<p>数据库主键或唯一约束：实现简单，但通用性欠缺，仅能应用于依赖数据库的业务，并且性能上需要权衡。</p>
-<p>分布式锁：一般适用于需要长时间处理的任务，如数据导出、复杂计算等，在处理期间防止重复请求，由于这些操作本身就要求串行处理，所以加锁对性能地影响有限（锁粒度为请求条件）。</p>
-<p>有限状态机：很多情况下请求对象都是带状态的，并且状态的跃迁是单向的，如订单的状态多为 <em>已下单-待付款-已付款-待发货-已发货-待签收</em> ，那么对于发货请求只能是针对已下单，待付款的订单，对其状态进行判断即可实现去重。</p>
-<h2 id="通用解决方案">通用解决方案</h2>
-<p>通用的做法是<strong>请求执行业务前先判断请求是否存在</strong>，如果存在则返回错误，否则写入请求并执行业务处理，处理完成后更新请求的状态并返回业务处理结果，如果业务处理错误可以选择删除对应的请求以便进行重试。该流程要求请求必须有可区分是否是重试的标识，并且对业务处理的前置判断和后置更新最好在框架层面实现以对业务操作透明化，做到最小化的业务逻辑侵入。</p>
-<p>我们可以借助Redis实现（如果要记录的资源量很大时可以考虑使用BloomFilter，注意精度问题），要求请求方做一定的策略，用Redis记录请求Token，请求Token是请求方为同一请求（包含重试）生成唯一凭证用于判断是否是重复请求。</p>
-<p>主流的MQ实现在 <code>autocommit=true</code> 时天然实现了幂等，但考虑业务处理可能出错的情况我们一般会将autocommit设置成false，在业务处理成功后再提交，这时就需要使用上述幂等方案了：在接收到消息时写入请求Token以实现去重判断（Token可为Topic+Offset）提交后删除Token，整体上可以做到对业务透明。</p>
-<h2 id="幂等的传递性">幂等的传递性</h2>
-<p>当幂等的业务操作只有部分成功时，应该如何处理？最直接的方法是将多个步骤用事务包裹，要么全部成功，要么全部失败，失败后删除请求<em>Token</em>允许重试。但微服务化后很有可能涉及到对不同服务的调用，此时我们只有两个选择：</p>
-<p>1）引入分布式事务，分布式事务相对较重，如非必须建议慎用。</p>
-<p>2）要求被调用的接口也实现幂等，这种做法相对优雅，也比较推荐。</p>
-<p>因此幂等是有传递性的，它要求我们请求对应的接口及其接口调用的子孙接口都必须幂等，这也是幂等在微服务下实施的难点，所以使用一套对业务透明的通用幂等方案非常有必要。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[CP与AP的取舍]]></title>
-        <id>https://yuncheng1998.github.io/post/bzWkeZxM-/</id>
-        <link href="https://yuncheng1998.github.io/post/bzWkeZxM-/">
-        </link>
-        <updated>2021-05-27T16:37:14.000Z</updated>
-        <content type="html"><![CDATA[<h1 id="cap理论">CAP理论</h1>
-<p>分布式系统设计要考虑三个核心要素：一致性（<em>Consistency</em>）、可用性（<em>Availability</em>）和分区容错性（<em>Partition tolerance</em>），而这三个特性不可能同时满足。</p>
-<ul>
-<li><strong>一致性</strong>：同一时刻同一请求的不同实例返回的结果相同。</li>
-<li><strong>可用性</strong>：所有读写请求在一定时间内得到正确的响应。</li>
-<li><strong>分区容错性</strong>：在网络异常情况下，系统仍能正常运作。</li>
-</ul>
-<p>由于分布式环境下网络的故障是常态，比如光缆被挖断、专线故障、网络波动、丢包、节点宕机等，所以设计时要考虑的是在满足P的前提下选择C还是A。</p>
-<p>以分布式缓存系统为例，如果要保证一致性（C），就要求一个节点写入数据后必须再将数据写入到另一个节点后才能返回成功，当发生网络异常两个服务节点无法相互通讯，为保证一致性必须抛出异常进而牺牲了可用性（A）。如果要保证可用性（A），就要求两个节点数据同步前也必须可用，这就必须牺牲一致性（C）导致在一段时间内两个服务节点所查询到的数据可能不同。</p>
-<h1 id="base理论">Base理论</h1>
-<p>Base是基本可用（<em>Basically Available</em>）、软状态（<em>Soft State</em>）和最终一致性（<em>Eventual consistency</em>）三个短语的简写。</p>
-<p>大量的工程实践的经验表明可用性很重要，一致性也很重要，但可以容许一定的时差，只要保证在一定时间内达到一致即可，这也就是<strong>最终一致性</strong>。因为要实现强一致性的成本很高，尤其是存在很多数据副本的情况下，区块链的PoW及其衍生算法的共识机制是概率强一致性（<em>Probabilistic Strong Consistency</em>），要求大多数节点都接受了这笔交易再真正接受它，这就导致交易的确认严重滞后。</p>
-<p>Base方案允许系统在一段时间内存在数据不一致性，存在软状态，但在规定的时间后数据会最终一致性。这样做的好处在于满足可用性的同时也在一定程度上符合一致性的要求。</p>
 ]]></content>
     </entry>
     <entry>
@@ -503,6 +145,1728 @@ consumer.subscribe(Arrays.asList(&quot;customerTopic&quot;));
 <p>一般情况下，提交失败是因为临时问题导致的，后续自动重试提交会成功。但如果在关闭消费者或重平衡前的最后一次提交，就要确保提交成功。因此，在消费者关闭之前一般会组合使用<em>commitAsync</em>和<em>commitSync</em>提交偏移量。</p>
 <h3 id="提交特定的偏移量">提交特定的偏移量</h3>
 <p>消费者API允许调用 <em>commitSync()</em> 和 <em>commitAsync()</em> 方法时传入希望提交的 <em>partition</em> 和 <em>offset</em> 的 <em>map</em>，即提交特定的偏移量。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Kafka入门（二）生产者]]></title>
+        <id>https://yuncheng1998.github.io/post/Vy1JO1w_f/</id>
+        <link href="https://yuncheng1998.github.io/post/Vy1JO1w_f/">
+        </link>
+        <updated>2021-05-14T05:38:32.000Z</updated>
+        <content type="html"><![CDATA[<p><em>ProducerRecord</em>：代表了一组需要发送的消息，它由记录要发送到的主题<em>Topic</em>，可选的分区号<em>Partition</em> 以及可选的键值对构成。</p>
+<p><em>Serializer</em>：在发送<em>ProducerRecord</em> 时，需要将键值对对象由序列化器<em>Serializer</em> 转换为字节数组在网络上传输</p>
+<p><em>Partitioner</em>：如果发送过程中指定了有效的分区号，那么在发送记录时将使用该分区。如果发送过程中未指定分区，则将使用<em>key</em> 的<em>hash</em> 函数映射指定一个分区。如果发送的过程中既没有分区号也没有<em>Key</em>，则将以循环的方式分配一个分区。选好分区后，生产者向其发送数据。这条消息被存放在一个记录批次里，批次里的所有消息会被发送到相同的主题和分区上。由一个独立的线程负责把它们发到<em>Kafka Broker</em> 上。</p>
+<p>响应：<em>Broker</em> 在收到消息时会返回一个响应，如果写入成功，返回一个<em>RecordMetaData</em> 对象，它包含了主题和分区信息，以及记录在分区里的偏移量，上面两种的时间戳类型也会返回给用户。如果写入失败，会返回一个错误。生产者在收到错误之后会尝试重新发送消息，几次之后如果还是失败的话，就返回错误消息。</p>
+<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1620971001611.png" alt="" loading="lazy"></figure>
+<h1 id="producer的创建">Producer的创建</h1>
+<p><em>Producer</em> 有3个必选的属性：<em><strong>bootstrap.servers、key.serializer、value.serializer</strong></em></p>
+<p><em><strong>boostrap.servers</strong></em>：指定<em>broker</em> 的地址，格式为<em>host:port</em> ，<em>producer</em> 根据一个<em>broker</em> 找到其他<em>broker</em> 信息，因此不需要提供全量的<em>broker</em> 地址，但也不要只给定一个（防止<em>broker</em> 宕机）</p>
+<p><em><strong>key.serializer、value.serializer</strong></em>：生产者需要将消息序列化后传递给broker，serializer表示类以何种方式进行序列化，该属性必须设置一个实现了<code>org.apache.kafka.common.serialization.Serializer</code> 接口的类，主要有：<em>ByteArraySerializer、StringSerializer、IntegerSerializer</em> ，其中 ByteArraySerialize 是 Kafka 默认使用的序列化器。</p>
+<pre><code class="language-java">// 创建 Properties 对象
+Properties properties = new Properties(); 
+// 设置bootstrap.servers
+properties.put(&quot;bootstrap.servers&quot;,&quot;broker1:9092,broker2:9092&quot;); 
+// 设置序列化器为StringSerializer
+properties.put(&quot;key.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); properties.put(&quot;value.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); 
+// 创建一个生产者对象，将属性值传递进来
+producer = new KafkaProducer&lt;String,String&gt;(properties);
+</code></pre>
+<h1 id="消息发送">消息发送</h1>
+<h2 id="简单消息发送">简单消息发送</h2>
+<p>消息先被写入分区中的缓冲区中，然后分批次发送给 <em>Kafka Broker</em>。发送成功后，<em>send</em>方法会返回<code>Future(java.util.concurrent)</code> 对象，<em>Future</em> 对象的类型是<em>RecordMetadata</em> 类型。我们上面这段代码没有考虑返回值，所以没有生成对应的<em>Future</em> 对象，所以没有办法知道消息是否发送成功。如果不是很重要的信息或者对结果不会产生影响的信息，可以使用这种方式进行发送。</p>
+<p>我们可以忽略发送消息时可能发生的错误或者在服务器端可能发生的错误，但在消息发送之前，生产者还可能发生其他的异常。这些异常有可能是 <code>SerializationException(序列化失败)</code>，<code>BufferedExhaustedException 或 TimeoutException(说明缓冲区已满)</code>，又或是 <code>InterruptedException</code>(说明发送线程被中断)</p>
+<pre><code class="language-java">String topic = &quot;&quot;;
+String key = &quot;&quot;;
+String value = &quot;&quot;;
+ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
+producer.send(record);
+</code></pre>
+<h2 id="同步发送消息">同步发送消息</h2>
+<p>第二种消息发送机制如下所示</p>
+<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
+try {
+  RecordMetadata recordMetadata = (RecordMetadata) producer.send(record).get();
+} catch (InterruptedException | ExecutionException e) {
+  e.printStackTrace();
+}
+</code></pre>
+<p>这种发送消息的方式首先调用 <em>send</em> 方法，然后再调用<em>get</em> 方法等待响应。如果服务器返回错误，会抛出异常，如果没有发生错误，会得到 <em>RecordMetadata</em> 对象，可以用它来查看消息记录。</p>
+<p>生产者*（KafkaProducer）*在发送的过程中会出现两类错误：</p>
+<ol>
+<li>重试错误：通过重发消息来解决。比如连接的错误，可以通过再次建立连接来解决。</li>
+<li>无主错误：通过重新为分区选举首领来解决。</li>
+</ol>
+<p><em>KafkaProducer</em> 可以被配置为自动重试，如果多次重试后仍无法解决问题，则会抛出重试异常。有些错误是无法通过重试来解决的，比如消息过大，这类错误不会进行重试，直接抛出异常。</p>
+<h2 id="异步发送消息">异步发送消息</h2>
+<p>为了在异步发送消息的同时能够对异常情况进行处理，生产者提供了回掉支持</p>
+<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
+producer.send(record, new ProducerCallBack());
+
+class ProducerCallBack implements Callback {
+    @Override
+    public void onCompletion(RecordMetadata metadata, Exception exception) {
+        if(exception != null){
+          	// handle
+            exception.printStackTrace();;
+        }
+    }
+}
+</code></pre>
+<p>首先实现回调需要定义一个实现了<code>org.apache.kafka.clients.producer.Callback</code>的类，这个接口只有一个<em>onCompletion</em> 方法。如果 <em>Kafka</em> 返回一个错误，<em>onCompletion</em> 方法会抛出一个非空异常，我们可以对其进行处理，然后在<em>send</em> 方法发送的时候传递一个<em>Callback</em> 回调的对象。</p>
+<h1 id="生产者分区机制">生产者分区机制</h1>
+<p><em>Kafka</em> 对于数据的读写粒度是分区，分区分布在多个<em>Broker</em> 中，每个节点能够实现独立的数据写入和读取，并且能通过增加节点来提高集群的吞吐量，通过分区部署在多个<em>Broker</em> 来实现负载均衡的效果。</p>
+<h2 id="分区策略">分区策略</h2>
+<p>分区策略决定生产者发送的消息放到哪个分区。<em>Kafka</em> 提供了默认的分区策略，也支持自定义分区策略。</p>
+<p>如果要自定义分区策略的话，需要显示配置生产者端的参数<em>Partitioner.class</em></p>
+<pre><code class="language-java">public interface Partitioner extends Configurable, Closeable {
+  /**
+   * 计算分区
+   */
+  public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster);
+
+  public void close();
+  
+  default public void onNewBatch(String topic, Cluster cluster, int prevPartition) {}
+}
+</code></pre>
+<p><em>partition</em>方法： <em>topic</em> 表示需要传递的主题；<em>key</em> 表示消息中的键值；<em>keyBytes</em> 表示分区中序列化过后的<em>key</em>，以<em>byte</em> 数组的形式传递；<em>value</em> 表示消息的 <em>value</em> 值；<em>valueBytes</em> 表示分区中序列化后的值数组；<em>cluster</em> 表示当前集群的原数据。可以充分地利用这些信息对消息进行分区，计算出它要被发送到哪个分区中。</p>
+<p><em>close方法</em> : 继承了<em>Closeable</em> 接口，在分区关闭时调用。</p>
+<p><em>onNewBatch方法</em>：表示通知分区程序用来创建新的批次。</p>
+<p>其中与分区策略息息相关的就是 partition() 方法了，分区策略有下面这几种</p>
+<figure data-type="image" tabindex="2"><img src="https://yuncheng1998.github.io/post-images/1620971032795.png" alt="" loading="lazy"></figure>
+<p><strong>顺序轮询</strong>：消息是均匀的分配给每个 partition，即每个分区存储一次消息。顺序轮询策略是 <em>Kafka Producer</em> 提供的默认策略。</p>
+<p><strong>随机轮询</strong>：本质上看随机策略也是力求将数据均匀地打散到各个分区，但从实际表现来看，它要逊于轮询策略，所以如果追求数据的均匀分布，还是使用轮询策略比较好。</p>
+<pre><code class="language-java">// 该主题的所有分区
+List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
+// 然后随机地返回一个小于它的正整数
+return ThreadLocalRandom.current().nextInt(partitions.size());
+</code></pre>
+<p><strong>key-ordering</strong>：按照<em>Key</em> 进行消息保存，保证同一个<em>Key</em> 的所有消息都进入到相同的分区里面，由于每个分区下的消息处理都是有顺序的，故这个策略被称为按消息键保序策略。</p>
+<pre><code class="language-java">List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
+// 根据Key计算Hash值
+return Math.abs(key.hashCode()) % partitions.size();
+</code></pre>
+<h1 id="kafka-重要参数配置">Kafka 重要参数配置</h1>
+<p><em><strong>key.serializer</strong></em>：用于 key 键的序列化</p>
+<p><em><strong>value.serializer</strong></em>：用于 value 值的序列化</p>
+<p><em><strong>acks</strong></em>：指定了要有多少个分区副本接收消息，生产者才认为消息是写入成功的。</p>
+<ul>
+<li>acks=0：表示生产者不知道自己产生的消息是否被服务器接收了。类似于 UDP 的运输层协议，只管发送，<em>broker</em> 是否接受不关心。</li>
+<li>acks=1：当<em>Leader</em> 接收到消息后会给生产者返回写入成功。如果由于网络异常或者<em>Leader</em> 还没选举出来等导致消息写入失败，生产者会再次重发数据。</li>
+<li>acks=-1：所有参与复制的节点都收到消息时，生产者才会接收到一个来自服务器的消息，由于要等待所有节点确认接收消息，因此延迟比<em>acks=1</em> 高。</li>
+</ul>
+<p><em><strong>buffer.memory</strong></em></p>
+<p>设置生产者内存缓冲区的大小，用于缓冲要发送到<em>broker</em> 的消息。如果应用程序发送消息的速度超过发送到服务器的速度，会导致生产者空间不足。这时<em>send</em> 方法调用要么被阻塞，要么抛出异常，取决于<em>block.on.buffer.null</em> 参数的设置。</p>
+<p><em><strong>compression.type</strong></em></p>
+<p>表示生产者启用何种压缩算法，默认情况下消息不会被压缩。该参数可以设置为<em>snappy</em>、<em>gzip</em> 和<em>lz4</em>，指定消息发送给<em>broker</em> 之前的压缩算法。</p>
+<p><em><strong>retries</strong></em></p>
+<p>生产者从服务器收到的错误有可能是临时性的错误（比如分区找不到<em>Leader</em>），在这种情况下，该参数决定了生产者可以重发的消息次数，超过该次数后才会放弃重试并返回错误。默认情况下，生产者在每次重试之间等待<em>100ms</em>，这个等待参数可以通过 <em>retry.backoff.ms</em> 进行修改。</p>
+<p><em><strong>batch.size</strong></em></p>
+<p>当有多个消息需要被发送到同一个分区时，生产者会把它们放在同一个批次里。该参数指定了一个批次可以使用的内存大小，按照字节数计算。当批次被填满，批次里的所有消息会被发送出去。不过生产者井不一定都会等到批次被填满才发送，任意条数的消息都可能被发送。</p>
+<p><em><strong>client.id</strong></em></p>
+<p>此参数可以是任意的字符串，服务器会用它来识别消息的来源，一般配置在日志里。</p>
+<p><em><strong>max.in.flight.requests.per.connection</strong></em></p>
+<p>指定生产者在收到服务器响应之前可以发送多少消息，值越高吞吐量越大，占用的内存也越多。如果值为1 则保证消息是按照发送的顺序写入服务器。</p>
+<p><em><strong>timeout.ms、request.timeout.ms 和 metadata.fetch.timeout.ms</strong></em></p>
+<p><em>request.timeout.ms</em> 指定生产者在发送数据时等待服务器返回的响应时间</p>
+<p><em>metadata.fetch.timeout.ms</em> 指定了生产者在获取元数据（比如目标分区的<em>Leader</em>）时等待服务器返回响应的时间。</p>
+<p>如果等待时间超时，生产者要么重试发送数据，要么返回一个错误。<em>timeout.m</em>s 指定了<em>broker</em> 等待同步副本返回消息确认的时间，与 <em>asks</em> 的配置相匹配。</p>
+<p><em><strong>max.block.ms</strong></em></p>
+<p>此参数指定了在调用<em>send</em> 方法发送数据或使用<em>partitionFor(</em>) 方法获取元数据时生产者的阻塞时间。当生产者的发送缓冲区已满，或者没有可用的元数据时，这些方法就会阻塞。在阻塞时间达到<em>max.block.ms</em> 时，生产者会抛出超时异常。</p>
+<p><em><strong>max.request.size</strong></em></p>
+<p>用于控制生产者发送的请求大小。<em>Kafka</em> 会首先判断消息大小是否大于<em>maxRequestSize</em>，如果大于则直接抛出异常，不会继续执行追加消息到 batch。并且还会在<em>Sender</em> 线程发送数据到<em>broker</em> 之前，会使用<em>max.request.size</em> 限制发送请求数据的大小。</p>
+<p><em><strong>receive.buffer.bytes 和 send.buffer.bytes</strong></em></p>
+<p><em>Kafka</em> 是基于<em>TCP</em> 实现，为保证可靠的消息传输，这两个参数分别指定了<em>TCP Socket</em> 接收和发送数据包的缓冲区的大小。如果它们被设置为*-1*，就使用操作系统的默认值。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Kafka入门（一）基本概念]]></title>
+        <id>https://yuncheng1998.github.io/post/0ZA_7Pj3E/</id>
+        <link href="https://yuncheng1998.github.io/post/0ZA_7Pj3E/">
+        </link>
+        <updated>2021-05-14T05:35:53.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="什么是mq">什么是MQ</h1>
+<p>消息引擎系统是一组规范。企业利用这组规范在不同系统之间传递语义准确的消息，实现松耦合的异步式数据传递。</p>
+<h1 id="为什么使用mq">为什么使用MQ</h1>
+<p>削峰填谷和松耦合</p>
+<p>削峰填谷指<strong>缓冲上下游瞬时突发流量</strong>，使其更平滑。特别是对于发送能力很强的上游系统，如果没有消息引擎的保护，下游系统可能会直接被压垮导致全链路服务雪崩。通过消息引擎，可以有效地对抗上游的流量冲击，将上游的峰填满到谷中，避免流量震荡。消息引擎系统的另一好处在于<strong>发送方和接收方的松耦合</strong>，减少了系统间不必要的交互。</p>
+<h1 id="kafka术语">Kafka术语</h1>
+<p><strong>消息</strong>：<em>Kafka</em> 中的数据单元，也被称为记录，可以把它看作数据库表中某一行的记录。</p>
+<p><strong>批次 <em>Batch</em></strong>：为提高效率， 消息会<strong>分批次</strong>写入 <em>Kafka</em>，批次就代指的是一组消息。</p>
+<p><strong>主题 <em>Topic</em></strong>：Topic是发布订阅的对象，可以为每个业务、每个应用甚至是每类数据都创建专属的主题。</p>
+<p><strong>分区 <em>Partition</em></strong>：<em>Topic</em> 可以被分为若干个分区 <em>（partition）</em> ，一个分区只属于一个主题。同主题的分区会部署在多个机器上，实现 <em>kafka</em> 的<strong>伸缩性</strong>。单一主题中的分区有序，但是<strong>无法保证主题中所有的分区有序</strong>。</p>
+<p><strong>客户端 <em>Clients</em></strong>：生产者和消费者的统称。可以同时运行多个生产者和消费者实例，这些实例不断地向集群中的多个主题生产和消费消息。</p>
+<p><strong>生产者 <em>Producer</em></strong>：向主题发布消息的客户端应用程序，通常持续不断地向一个或多个主题发送消息。</p>
+<p><strong>消费者 <em>Consumer</em></strong>：订阅这些主题消息的客户端应用程序。和生产者类似，消费者也能够同时订阅多个主题的消息。</p>
+<p><strong>消费者群组 <em>Consumer Group</em></strong>：由一个或多个消费者组成的群体。</p>
+<p><strong>偏移量 <em>Consumer Offset</em></strong> ：是一种元数据，一个不断递增的整数值，用来记录消费者发生重平衡时的位置，以便用来恢复数据。</p>
+<p><strong>服务端 <em>Broker</em></strong>：<em>Kafka</em>的服务器端，负责接收和处理客户端发送过来的请求，以及对消息进行持久化。常见的做法是将不同的<em>Broker</em> 分散运行在不同的机器上，如果某台机器宕机，上面运行的所有<em>Broker</em> 进程都挂掉了，其他机器上的<em>Broker</em> 也依然能够对外提供服务。这是<em>Kafka</em>提供高可用的手段之一。</p>
+<p><strong>集群 <em>cluster</em></strong>：由一个或多个 <em>Broker</em> 组成，每个集群都有一个 <em>Broker</em> 同时充当了集群控制器的角色（自动从集群中选举出来）。</p>
+<p><strong>副本 <em>Replica</em></strong>：消息的备份叫做副本，副本的数量是可以配置的，<em>Kafka</em> 定义两类副本：领导者副本*（Leader Replica）<em>和追随者副本</em>（Follower Replica）*，前者对外提供服务，后者被动跟随。</p>
+<p><strong>重平衡 <em>Rebalance</em></strong>：消费者组内某个消费者实例挂掉后，其他消费者实例自动重新分配订阅主题分区的过程。是消费者端实现高可用的重要手段。</p>
+<h1 id="kafka的特性">Kafka的特性</h1>
+<ol>
+<li>高吞吐、低延迟：收发消息非常快，每秒可以处理几十万条消息，最低延迟只有几毫秒。</li>
+<li>高伸缩性：每个主题包含多个分区，主题中的分区可以分布在不同的主机中。</li>
+<li>持久性、可靠性：允许数据的持久化存储到磁盘，并支持数据备份防止数据丢失。</li>
+<li>容错性：允许集群中的节点宕机，集群仍能够正常工作。</li>
+<li>高并发：支持数千个客户端同时读写。</li>
+</ol>
+<h1 id="kafka-的使用场景">Kafka 的使用场景</h1>
+<p>活动跟踪：Kafka 可以用来跟踪用户行为，比如我们经常回去淘宝购物，你打开淘宝的那一刻，你的登陆信息，登陆次数都会作为消息传输到 Kafka ，当你浏览购物的时候，你的浏览信息，你的搜索指数，你的购物爱好都会作为一个个消息传递给 Kafka ，这样就可以生成报告，可以做智能推荐，购买喜好等。</p>
+<p>传递消息：Kafka 另外一个基本用途是传递消息，应用程序向用户发送通知就是通过传递消息来实现的，这些应用组件可以生成消息，而不需要关心消息的格式，也不需要关心消息是如何发送的。</p>
+<p>度量指标：Kafka也经常用来记录运营监控数据。包括收集各种分布式应用的数据，生产各种操作的集中反馈，比如报警和报告。</p>
+<p>日志记录：Kafka 的基本概念来源于提交日志，比如我们可以把数据库的更新发送到 Kafka 上，用来记录数据库的更新时间，通过kafka以统一接口服务的方式开放给各种consumer，例如hadoop、Hbase、Solr等。</p>
+<p>流式处理：流式处理是有一个能够提供多种应用程序的领域。</p>
+<p>限流削峰：Kafka 多用于互联网领域某一时刻请求特别多的情况下，可以把请求写入Kafka 中，避免直接请求后端程序导致服务崩溃。</p>
+<h1 id="kafka-的消息队列">Kafka 的消息队列</h1>
+<p>点对点模式：一个生产者对应一个消费者<br>
+<img src="https://yuncheng1998.github.io/post-images/1620970642605.png" alt="" loading="lazy"></p>
+<p>发布订阅模式：一个/多个生产者对应多个消费者<br>
+<img src="https://yuncheng1998.github.io/post-images/1620970659080.png" alt="" loading="lazy"></p>
+<h1 id="kafka-系统架构">Kafka 系统架构</h1>
+<p>一个典型的 Kafka 集群中包含若干Producer，若干broker，若干Consumer Group，以及一个Zookeeper集群。Kafka通过Zookeeper管理集群配置，选举leader，以及在Consumer Group发生变化时进行rebalance。Producer使用push模式将消息发布到broker，Consumer使用pull模式从broker订阅并消费消息。<br>
+<img src="https://yuncheng1998.github.io/post-images/1620970691187.png" alt="" loading="lazy"></p>
+<h1 id="核心-api">核心 API</h1>
+<p>有四个核心API：</p>
+<p>Producer API：支持应用程序向一个或多个主题上发送消息记录。</p>
+<p>Consumer API：支持应用程序订阅一个或多个主题并处理生成的记录流。</p>
+<p>Streams API：支持应用程序作为流处理器，从一个或多个主题中消费输入流并为其生成输出流，有效的将输入流转换为输出流。</p>
+<p>Connector API，将<em>Kafka</em> 主题连接到生产者和消费者。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[重读深入理解Java虚拟机（三）—— 读深入理解JVM之类文件结构]]></title>
+        <id>https://yuncheng1998.github.io/post/gzTjEwfjN/</id>
+        <link href="https://yuncheng1998.github.io/post/gzTjEwfjN/">
+        </link>
+        <updated>2021-04-12T05:28:00.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="类文件结构">类文件结构</h1>
+<p>最近在读 <a href="https://book.douban.com/subject/24722612/"><em>深入理解 Java虚拟机</em></a>，这里列出类文件结构部分大纲，还需配合该书进行学习。</p>
+<h3 id="无关性">无关性</h3>
+<ul>
+<li>字节码存储格式
+<ul>
+<li>虚拟机只与字节码文件进行绑定</li>
+<li>安全性：对字节码文件有很多强制性约束</li>
+</ul>
+</li>
+<li>虚拟机
+<ul>
+<li>虚拟机只执行字节码文件，而不关心它的来源</li>
+<li>字节码文件描述能力比Java语言更强大</li>
+</ul>
+</li>
+</ul>
+<h3 id="class类文件的结构">Class类文件的结构</h3>
+<h4 id="注意">注意</h4>
+<ul>
+<li>每一个Class文件都对应唯一的类或接口，但这个类或接口不一定在文件中，可以通过类加载器直接生成</li>
+<li>以8字节为基础单位的二进制流
+<ul>
+<li>占用8位以上空间的数据项需要分割
+<ul>
+<li>分割方式：高位在前</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>使用伪结构来存储数据</li>
+</ul>
+<h4 id="两种数据类型">两种数据类型</h4>
+<ul>
+<li>无符号数
+<ul>
+<li>基本数据类型</li>
+<li>分类
+<ul>
+<li>u1</li>
+<li>u2</li>
+<li>u4</li>
+<li>u8</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>表
+<ul>
+<li>复合数据类型
+<ul>
+<li>有层次</li>
+</ul>
+</li>
+<li>由多个无符号数组成</li>
+</ul>
+</li>
+</ul>
+<h4 id="集合">集合</h4>
+<ul>
+<li>有同一类型但数量不定的多个数据时
+<ul>
+<li>前置容量计数器</li>
+</ul>
+</li>
+</ul>
+<h4 id="文件格式">文件格式</h4>
+<ul>
+<li>magic
+<ul>
+<li>魔数：CAFE BABE</li>
+<li>标识文件类型</li>
+<li>u4</li>
+</ul>
+</li>
+<li>版本
+<ul>
+<li>minor_version
+<ul>
+<li>Class文件的次版本号</li>
+<li>u2</li>
+</ul>
+</li>
+<li>major_version
+<ul>
+<li>Class文件主版本号</li>
+<li>u2</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>常量集合
+<ul>
+<li>constant_pool_count
+<ul>
+<li>常量池中常量个数计数</li>
+<li>u2</li>
+</ul>
+</li>
+<li>constant_pool
+<ul>
+<li>常量池</li>
+<li>长度为constant_pool_count - 1
+<ul>
+<li>第0号常量池表示指向常量池的索引值数据表达不引用任何一个常量池项目</li>
+</ul>
+</li>
+<li>常量池的两大类常量
+<ul>
+<li>字面量
+<ul>
+<li>字符串，声明为final的常量值</li>
+<li>运行期不发生动态链接</li>
+</ul>
+</li>
+<li>符号引用
+<ul>
+<li>包含的三类常量
+<ul>
+<li>类和接口的全限定名</li>
+<li>字段的名称和描述符</li>
+<li>方法的名称和描述符</li>
+</ul>
+</li>
+<li>符号引用在运行期间经过转换得到真正的内存入口地址</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>常量池中的常量
+<ul>
+<li>每个常量都是表结构
+<ul>
+<li>表结构第一项都是tag，表示常量的类型</li>
+</ul>
+</li>
+<li>14中常量有自己的表结构
+<ul>
+<li>即有不同的表示</li>
+</ul>
+</li>
+<li>在字段表、方法表、属性表中存在对这些常量的引用</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>access_flags
+<ul>
+<li>访问标志</li>
+<li>标识
+<ul>
+<li>是否public</li>
+<li>是否final</li>
+<li>是否允许使用invokespecial字节码指令的新语意
+<ul>
+<li>JDK 1.0.2后都为真</li>
+<li>改指令语意发生过改变</li>
+</ul>
+</li>
+<li>是否是接口</li>
+<li>是否是abstract</li>
+<li>标识该类不是由用户代码产生</li>
+<li>标识是注解</li>
+<li>标识是枚举</li>
+</ul>
+</li>
+<li>u2</li>
+</ul>
+</li>
+<li>this_class
+<ul>
+<li>类索引</li>
+<li>u2</li>
+</ul>
+</li>
+<li>super_class
+<ul>
+<li>父类索引</li>
+<li>u2</li>
+</ul>
+</li>
+<li>接口索引集合
+<ul>
+<li>interfaces_count
+<ul>
+<li>接口索引计数</li>
+<li>u2</li>
+</ul>
+</li>
+<li>interfaces
+<ul>
+<li>接口索引集合</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>字段表集合
+<ul>
+<li>fields_count
+<ul>
+<li>字段表集合中字段的个数</li>
+<li>u2</li>
+</ul>
+</li>
+<li>fields
+<ul>
+<li>字段表集合
+<ul>
+<li>字段是接口或类中声明的变量</li>
+<li>在Class文件中字段以字段表的形式存储</li>
+<li>除属性表集合外其他均为u2类型</li>
+</ul>
+</li>
+<li>字段包含的信息
+<ul>
+<li>作用域</li>
+<li>实例变量还是类变量</li>
+<li>可变性</li>
+<li>并发可见性</li>
+<li>可否序列化</li>
+<li>字段数据类型</li>
+<li>字段名称</li>
+</ul>
+</li>
+<li>字段表结构
+<ul>
+<li>access_flag
+<ul>
+<li>访问类型</li>
+</ul>
+</li>
+<li>name_index
+<ul>
+<li>字段名称</li>
+<li>指向常量池</li>
+</ul>
+</li>
+<li>descrptor_index
+<ul>
+<li>方法描述</li>
+<li>指向常量池</li>
+</ul>
+</li>
+<li>attribute_count</li>
+<li>attributes</li>
+</ul>
+</li>
+<li>描述符规则
+<ul>
+<li>基本数据类型使用大写字母表示</li>
+<li>对象类型使用L加对象全限定名</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>方法表集合
+<ul>
+<li>methods_count
+<ul>
+<li>方法集合的计数</li>
+<li>u2</li>
+</ul>
+</li>
+<li>methods
+<ul>
+<li>方法表集合
+<ul>
+<li>方法在Class文件中以方法表的形式存储</li>
+</ul>
+</li>
+<li>方法表结构
+<ul>
+<li>access_flag</li>
+<li>name_index
+<ul>
+<li>指向常量池</li>
+<li>常量池中存方法名</li>
+</ul>
+</li>
+<li>descriptor_index
+<ul>
+<li>(方法参数)返回值类型</li>
+</ul>
+</li>
+<li>attribute_count</li>
+<li>attributes
+<ul>
+<li>Code属性存放了方法体字节码指令</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>注意
+<ul>
+<li>若没有重写，不会出现父类方法信息</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>属性表集合
+<ul>
+<li>attributes_count</li>
+<li>attributes
+<ul>
+<li>属性表结构
+<ul>
+<li>attribute_name_index
+<ul>
+<li>u2</li>
+<li>指向常量池来获取名称</li>
+</ul>
+</li>
+<li>attribute_length
+<ul>
+<li>u4</li>
+<li>使用该字段指定长度</li>
+<li>以字节为单位</li>
+</ul>
+</li>
+<li>info
+<ul>
+<li>u1</li>
+<li>数量为attribute_length定义的数量</li>
+<li>属性结构完全自定义</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>预定义的属性
+<ul>
+<li>Code
+<ul>
+<li>Code属性表的结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>max_stack
+<ul>
+<li>操作数栈最大深度</li>
+<li>用来分配栈帧中操作数栈深度</li>
+</ul>
+</li>
+<li>max_locals
+<ul>
+<li>局部变量表所需的存储空间</li>
+<li>单位slot</li>
+<li>并不是所有变量所占slot的和
+<ul>
+<li>注意slot可以重用，当代码执行超过该局部变量范围时，slot可以重新赋值</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>code_length
+<ul>
+<li>Java源程序编译后的字节码指令长度</li>
+<li>u4类型</li>
+<li>但只能使用u2的长度</li>
+</ul>
+</li>
+<li>code
+<ul>
+<li>存储字节码指令一系列字节流
+<ul>
+<li>每个指令都是u1的单字节</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>异常表集合
+<ul>
+<li>不是必须存在</li>
+<li>异常表结构
+<ul>
+<li>start_pc
+<ul>
+<li>开始行
+<ul>
+<li>字节码相对于方法体的偏移量</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>end_pc
+<ul>
+<li>结束行</li>
+</ul>
+</li>
+<li>handler_pc
+<ul>
+<li>出现异常跳转行</li>
+</ul>
+</li>
+<li>catch_type
+<ul>
+<li>异常类型
+<ul>
+<li>指向一个CONSTANT_Class_info型常量的索引</li>
+<li>当该值为0时，表示任意异常都要转到handler_pc进行处理</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>使用异常表而不是跳转来完成异常处理</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Exceptions属性
+<ul>
+<li>列举方法中可能抛出的受检查的异常
+<ul>
+<li>throws关键字后的异常</li>
+</ul>
+</li>
+<li>属性表结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>number_of_exceptions
+<ul>
+<li>抛出受检查异常的种类数</li>
+</ul>
+</li>
+<li>exception_index_table
+<ul>
+<li>指向常量池中CONSTANT_Class_info型常量的索引
+<ul>
+<li>代表受查异常的类型</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LineNumberTable属性
+<ul>
+<li>Java源码行号与字节码行号的对应关系
+<ul>
+<li>行号：偏移量</li>
+</ul>
+</li>
+<li>属性结构
+<ul>
+<li>attribute_name_index
+<ul>
+<li>属性名</li>
+</ul>
+</li>
+<li>attribute_length
+<ul>
+<li>属性长度</li>
+</ul>
+</li>
+<li>line_number_table_length
+<ul>
+<li>映射表长度</li>
+</ul>
+</li>
+<li>line_number_table
+<ul>
+<li>集合
+<ul>
+<li>大小：line_number_table_length</li>
+<li>类型：line_number_info
+<ul>
+<li>line_number_info包括start_pc和line_number两个u2类型的数据项</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LocalVariableTable属性
+<ul>
+<li>栈帧中局部变量表中的变量与Java源码中定义的变量之间的关系
+<ul>
+<li>缺失时IDE会使用args0等占位符来代替</li>
+</ul>
+</li>
+<li>属性结构
+<ul>
+<li>attribute_name_index
+<ul>
+<li>属性名</li>
+<li>指向常量池</li>
+</ul>
+</li>
+<li>attribute_length
+<ul>
+<li>属性长度</li>
+</ul>
+</li>
+<li>local_variable_table_length
+<ul>
+<li>映射表表长</li>
+</ul>
+</li>
+<li>local_variable_table
+<ul>
+<li>大小：local_variable_table_length指定</li>
+<li>类型：local_variable_info
+<ul>
+<li>结构
+<ul>
+<li>start_pc
+<ul>
+<li>局部变量生命周期开始的字节码偏移量</li>
+</ul>
+</li>
+<li>length
+<ul>
+<li>局部变量作用范围覆盖的长度</li>
+</ul>
+</li>
+<li>name_index
+<ul>
+<li>局部变量的名称</li>
+<li>指向常量池</li>
+</ul>
+</li>
+<li>descriptor_index
+<ul>
+<li>局部变量的描述符</li>
+<li>指向常量池</li>
+</ul>
+</li>
+<li>index
+<ul>
+<li>局部变量在栈帧局部变量表中Slot的位置</li>
+<li>若为64位类型时，占用index和index+1两个位置</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>与LocalVariableTypeTable的区分
+<ul>
+<li>描述泛型</li>
+<li>描述符中泛型的参数化类型被擦除，描述符不能准确描述泛型类型</li>
+<li>将descriptor_index换为字段的特征签名Signature</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>SourceFile属性
+<ul>
+<li>记录生成Class文件的源码文件的名称</li>
+<li>可选属性</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>sourcefile_index
+<ul>
+<li>指向常量池</li>
+<li>源码文件名</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>ConstantValue属性
+<ul>
+<li>通知虚拟机为静态变量赋值</li>
+<li>变量的赋值方式
+<ul>
+<li>非静态变量
+<ul>
+<li>实例构造器方法进行</li>
+</ul>
+</li>
+<li>静态变量
+<ul>
+<li>类构造器中</li>
+<li>使用Constant属性
+<ul>
+<li>使用final来修饰，并且数据类型是基本数据类型或String类型</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length
+<ul>
+<li>定长属性，值为2</li>
+</ul>
+</li>
+<li>constantvalue_index
+<ul>
+<li>常量池中一个字面量的引用</li>
+<li>u2数据类型</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>InnerClasses属性
+<ul>
+<li>记录内部类与宿主类之间的关联</li>
+<li>对外部类和它的内部类生成该属性</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>number_of_classes
+<ul>
+<li>表示要记录多少个内部类信息</li>
+</ul>
+</li>
+<li>inner_classes
+<ul>
+<li>类型：inner_class_info
+<ul>
+<li>inner_class_info_index
+<ul>
+<li>指向常量池</li>
+<li>内部类的符号引用：CONSTANT_Class_info型常量</li>
+</ul>
+</li>
+<li>outer_class_info_index
+<ul>
+<li>指向常量池</li>
+<li>外部类的符号引用</li>
+</ul>
+</li>
+<li>inner_name_index
+<ul>
+<li>指向常量池</li>
+<li>内部类的名字
+<ul>
+<li>匿名类值为0</li>
+<li>即常量池的0号</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>inner_class_access_flags
+<ul>
+<li>内部类的访问标志</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>大小：number_of_classes指定</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Deprecated属性
+<ul>
+<li>过时标志</li>
+<li>有或没有，没有属性值</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Synthetic属性
+<ul>
+<li>表示该类、字段或方法是由编译期自动产生的</li>
+</ul>
+</li>
+<li>StackMapTable
+<ul>
+<li>位于Code属性表中的变长属性</li>
+<li>虚拟机类加载的字节码验证阶段被新类型检查验证器使用</li>
+<li>在编译期间将一系列验证信息直接记录在Class文件中</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>number_of_entries</li>
+<li>stack_map_frame entries
+<ul>
+<li>大小：number_of_entries指定</li>
+<li>类型：stack_map_frame
+<ul>
+<li>显式或隐式代表一个字节码偏移量</li>
+<li>表示执行该字节码时局部变量表和操作数栈的验证类型</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Signature属性
+<ul>
+<li>可选的定长属性</li>
+<li>记录泛型中指定的类型变量或参数化类型</li>
+<li>由于Java中泛型时伪泛型，使用这个属性可以使用反射获取泛型类型</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>signature_index
+<ul>
+<li>指向常量池中的签名</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>BootstrapMethods属性
+<ul>
+<li>变长属性，位于类文件属性表中</li>
+<li>保存invokedynamic指令引用的引导方法限定符</li>
+<li>类文件结构的常量池中出现CONSTANT_InvokeDynamic_info类型的常量</li>
+<li>结构
+<ul>
+<li>attribute_name_index</li>
+<li>attribute_length</li>
+<li>num_bootstrap_methods
+<ul>
+<li>引导方法限定符的数量</li>
+</ul>
+</li>
+<li>bootstrap_methods
+<ul>
+<li>大小：num_bootstrap_methods指定</li>
+<li>类型：bootstrap_method
+<ul>
+<li>bootstrap_method_ref
+<ul>
+<li>对常量池中CONSTANT_MethodHandle_info结构的指向</li>
+</ul>
+</li>
+<li>num_bootsrap_arguments
+<ul>
+<li>指出静态参数个数</li>
+</ul>
+</li>
+<li>bootstrap_arguments
+<ul>
+<li>大小：num_bootsrap_argumnets指出</li>
+<li>类型：对常量池的有效索引</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[重读深入理解Java虚拟机（二）—— 垃圾收集器与内存分配]]></title>
+        <id>https://yuncheng1998.github.io/post/9kojaJwjx/</id>
+        <link href="https://yuncheng1998.github.io/post/9kojaJwjx/">
+        </link>
+        <updated>2021-04-12T02:27:14.000Z</updated>
+        <content type="html"><![CDATA[<p>重读深入理解Java虚拟机计划 <strong>垃圾收集器与内存分配</strong></p>
+<h2 id="线程独占和线程共享区域">线程独占和线程共享区域</h2>
+<h3 id="线程独立区域随线程结束回收">线程独立区域随线程结束回收</h3>
+<ul>
+<li>程序计数器</li>
+<li>虚拟机栈</li>
+<li>本地方法栈</li>
+</ul>
+<h3 id="java堆和方法区是垃圾回收器关注的内存">Java堆和方法区是垃圾回收器关注的内存</h3>
+<ul>
+<li>堆上关注对象的回收</li>
+<li>方法区关注常量和无用类</li>
+</ul>
+<h2 id="判断对象是否需要回收">判断对象是否需要回收</h2>
+<h3 id="引用计数法">引用计数法</h3>
+<ul>
+<li>引用计数，当为0时判断需要回收</li>
+<li>难以解决对象间的循环引用问题</li>
+</ul>
+<h3 id="可达性分析法">可达性分析法</h3>
+<ul>
+<li>
+<p>以GC Root为起点，向下搜索，不再引用链上的对象可以回收</p>
+</li>
+<li>
+<p>GC Root判定</p>
+<ul>
+<li>JVM栈中的引用对象</li>
+<li>方法区中类静态属性引用的对象</li>
+<li>方法区中常量引用的对象</li>
+<li>本地方法栈中JNI引用的对象</li>
+</ul>
+</li>
+</ul>
+<figure data-type="image" tabindex="1"><img src="http://www.wangych.top/upload/2019/7/%E5%AF%B9%E8%B1%A1%E5%9B%9E%E6%94%B6-5693b7d0bf864fe096213eeaa802e201.jpg" alt="对象回收" loading="lazy"></figure>
+<h3 id="引用">引用</h3>
+<ul>
+<li>
+<p>为了在进行垃圾回收时更好的为对象分类，将其引用类型进行区分</p>
+</li>
+<li>
+<p>四种引用强度</p>
+<ul>
+<li>
+<p>强引用</p>
+<ul>
+<li>new出来的对象，只要强引用还在，就不会回收该对象</li>
+</ul>
+</li>
+<li>
+<p>软引用</p>
+<ul>
+<li>有用但非必须的对象，在即将内存溢出时进行一次回收，如果空间还不够，才将其划分到第二次回收的范围中</li>
+</ul>
+</li>
+<li>
+<p>弱引用</p>
+<ul>
+<li>第一次垃圾回收会直接回收掉</li>
+</ul>
+</li>
+<li>
+<p>虚引用</p>
+<ul>
+<li>对象被回收会得到一个系统通知</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>判断对象生存还是死亡</p>
+</li>
+</ul>
+<h2 id="方法区的回收">方法区的回收</h2>
+<h3 id="回收对象废弃常量和无用的类">回收对象：废弃常量和无用的类</h3>
+<h3 id="废弃常量">废弃常量</h3>
+<ul>
+<li>如果没有引用指向这个常量，就将其回收</li>
+</ul>
+<h3 id="无用的类">无用的类</h3>
+<ul>
+<li>该类所有实例都被回收</li>
+<li>类加载器被回收</li>
+<li>Class对象没有被引用过，不能通过反射来访问该类的方法</li>
+</ul>
+<h2 id="垃圾收集算法">垃圾收集算法</h2>
+<h3 id="标记清除算法">标记清除算法</h3>
+<ul>
+<li>
+<p>效率问题</p>
+</li>
+<li>
+<p>空间问题</p>
+<ul>
+<li>标记清除产生大量不连续的内存碎片，导致分配大对象时没有足够的连续的内存</li>
+</ul>
+</li>
+</ul>
+<h3 id="复制算法">复制算法</h3>
+<ul>
+<li>针对新生代（对象存活时间较短）</li>
+<li>较大的Eden区和两块Survivor区8:1比例</li>
+<li>每次将Eden和Survivor存活的对象一次性复制到另外一块Survivor中</li>
+<li>为防止Survivor的空间不够用需要老年代进行分配担保</li>
+</ul>
+<h3 id="标记整理算法">标记整理算法</h3>
+<ul>
+<li>针对老年代（对象存活时间较长）</li>
+<li>让存活对象向一端移动，然后清理掉端边界以外的内存</li>
+</ul>
+<h3 id="分代收集算法">分代收集算法</h3>
+<ul>
+<li>根据对象存活周期不同将内存划分为新生代和老年代</li>
+<li>新生代使用复制算法</li>
+<li>老年代使用标记清除或标记整理</li>
+</ul>
+<h2 id="hotspot算法实现">HotSpot算法实现</h2>
+<h3 id="枚举根节点">枚举根节点</h3>
+<ul>
+<li>
+<p>GC Root主要存在于全局引用和执行上下文中，检查消耗时间</p>
+</li>
+<li>
+<p>在确保一致性的快照中执行</p>
+<ul>
+<li>stop the world</li>
+<li>枚举根节点时必须停顿</li>
+</ul>
+</li>
+<li>
+<p>准确式GC</p>
+<ul>
+<li>OopMap来获得对象引用存在的位置</li>
+<li>在类加载完成时，HotSpot将对象在内存上偏移量以及数据类型计算出来</li>
+</ul>
+</li>
+</ul>
+<h3 id="安全点">安全点</h3>
+<ul>
+<li>
+<p>引起引用变化的指令较多，为每一条指令都生成对应OopMap需要大量额外空间</p>
+</li>
+<li>
+<p>只在特定位置上记录，到达安全点才会GC</p>
+</li>
+<li>
+<p>选定标准：程序长时间执行，例如方法调用、循环跳转、异常跳转等</p>
+</li>
+<li>
+<p>让所有线程都跑到最近安全点后停顿</p>
+<ul>
+<li>
+<p>抢先式中断</p>
+<ul>
+<li>不需要代码主动配合，所有线程中断，有线程没有中断在安全点上就恢复线程到安全点</li>
+</ul>
+</li>
+<li>
+<p>主动式中断</p>
+<ul>
+<li>线程轮询中断标志，需要中断时将其挂起在经过的安全点上</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="安全区域">安全区域</h3>
+<ul>
+<li>一块代码片段内，引用关系不会发生变化，该区域内的GC是安全的</li>
+<li>对安全点的扩展</li>
+<li>线程执行到Safe Region中的代码时，表示自己，GC时不需要考虑这些线程，当离开时检查枚举根节点是否正在执行，等待完成信号后离开</li>
+</ul>
+<figure data-type="image" tabindex="2"><img src="http://www.wangych.top/upload/2019/7/%E5%AE%89%E5%85%A8%E5%8C%BA-5e578f8c5e3b46269b602ebede205231.jpg" alt="安全区" loading="lazy"></figure>
+<h2 id="垃圾收集器">垃圾收集器</h2>
+<h3 id="新生代">新生代</h3>
+<ul>
+<li>
+<p>Serial</p>
+<ul>
+<li>单线程的收集器</li>
+<li>采用复制算法</li>
+</ul>
+</li>
+<li>
+<p>ParNew</p>
+<ul>
+<li>Serial的多线程版本</li>
+</ul>
+</li>
+<li>
+<p>Parallel Scavenge</p>
+<ul>
+<li>吞吐量优先收集器</li>
+<li>目的为达到一个可控制的吞吐量</li>
+<li>吞吐量=用户代码时间/总时间</li>
+</ul>
+</li>
+</ul>
+<h3 id="老年代">老年代</h3>
+<ul>
+<li>
+<p>Serial Old</p>
+<ul>
+<li>Serial的老年代版本</li>
+<li>标记整理算法</li>
+</ul>
+</li>
+<li>
+<p>Parallel Old</p>
+<ul>
+<li>Serial Old的多线程版本</li>
+</ul>
+</li>
+<li>
+<p>CMS</p>
+<ul>
+<li>
+<p>目标为获取最短回收停顿时间，提高响应速度</p>
+</li>
+<li>
+<p>标记-清除算法 Mark sweep</p>
+</li>
+<li>
+<p>运作过程</p>
+<ul>
+<li>
+<p>初始标记</p>
+<ul>
+<li>stop the world，单线程</li>
+<li>标记GC Root直接关联的对象，时间短</li>
+</ul>
+</li>
+<li>
+<p>并发标记</p>
+<ul>
+<li>GC Roots Tracing</li>
+<li>时间较长，用户程序会导致标记变动</li>
+<li>与用户线程并发</li>
+</ul>
+</li>
+<li>
+<p>重新标记</p>
+<ul>
+<li>stop the world，多线程重新标记</li>
+<li>针对并发标记阶段产生的变动重新标记</li>
+</ul>
+</li>
+<li>
+<p>并发清除</p>
+<ul>
+<li>与用户线程并发执行</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>缺点</p>
+<ul>
+<li>
+<p>对CPU资源敏感</p>
+</li>
+<li>
+<p>无法处理浮动垃圾</p>
+<ul>
+<li>
+<p>并发清理阶段与用户线程并发执行，产生的新垃圾需要等到下一次GC时回收</p>
+</li>
+<li>
+<p>需要预留部分空间给并发收集时程序使用</p>
+</li>
+<li>
+<p>可能出现Concurrent Mode failure导致另一次Full GC</p>
+<ul>
+<li>临时启动Serial Old收集器重新进行Tenured generation的收集</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>空间碎片</p>
+<ul>
+<li>
+<p>由于采用标记清除算法导致</p>
+</li>
+<li>
+<p>可能缺乏足够连续内存存放大对象</p>
+</li>
+<li>
+<p>解决</p>
+<ul>
+<li>
+<p>-XX:+UseCMSCompactAtFullCollection参数</p>
+<ul>
+<li>在要进行Full GC时进行内存碎片整理合并</li>
+</ul>
+</li>
+<li>
+<p>-XX:CMSFullGCsBeforeCollection参数</p>
+<ul>
+<li>设置几次不压缩的Full GC后跟一次带压缩的</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="g1">G1</h3>
+<ul>
+<li>
+<p>特点</p>
+<ul>
+<li>并行与并发</li>
+<li>分代收集</li>
+<li>空间整合</li>
+<li>可预测的停顿</li>
+</ul>
+</li>
+<li>
+<p>Region</p>
+<ul>
+<li>
+<p>G1收集器不进行分代收集，将内存划分为大小相同的Region</p>
+</li>
+<li>
+<p>新生代和老年代是一部分Region的集合</p>
+</li>
+<li>
+<p>跟踪每个Region中垃圾堆积的价值大小，维护优先列表，每次根据允许收集的时间优先回收价值最大的Region</p>
+</li>
+<li>
+<p>Remembered Set</p>
+<ul>
+<li>每个Region都有自己的Set</li>
+<li>Region间存在对象的引用关系，使用Remembered Set避免在回收新生代过程中查找GC Roots时全堆扫描</li>
+<li>当程序对引用类型的数据进行写操作时，检查引用的对象是否在其他Region中，如果时通过CardTable将引用信息记录到Set中</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>运行过程</p>
+<ul>
+<li>
+<p>初始标记</p>
+<ul>
+<li>标记GC Root能直接关联到的对象</li>
+</ul>
+</li>
+<li>
+<p>并发标记</p>
+<ul>
+<li>从GC Root开始对堆中的对象进行可达性分析</li>
+<li>耗时长，与用户程序并发执行</li>
+</ul>
+</li>
+<li>
+<p>最终标记</p>
+<ul>
+<li>修正在并发标记期间因用户程序继续运作导致标记变动</li>
+</ul>
+</li>
+<li>
+<p>筛选回收</p>
+<ul>
+<li>对Region的回收价值和成本进行排序</li>
+<li>根据用户期望的停顿时间制定回收计划</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="内存分配与回收策略">内存分配与回收策略</h2>
+<h3 id="对象的分配">对象的分配</h3>
+<ul>
+<li>
+<p>主要在堆上</p>
+<ul>
+<li>
+<p>优先在新生代的Eden区分配</p>
+</li>
+<li>
+<p>大对象直接进入老年代</p>
+<ul>
+<li>-XX:PretenureSizeThreshold参数</li>
+<li>设置大于对象大于某个值后直接分配在老年代</li>
+</ul>
+</li>
+<li>
+<p>长期存活的对象进入老年代</p>
+<ul>
+<li>
+<p>使用对象年龄Age计数器</p>
+</li>
+<li>
+<p>对象在Eden出生，第一次Minor GC后放入Survivor，Age=1。没熬过一次Minor GC对象年龄+1，到达阈值（默认15）后进入老年代</p>
+<ul>
+<li>+XX:MaxTenuringThreshold=15</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>也可能被拆散为标量类型间接在栈上分配</p>
+</li>
+</ul>
+<h3 id="两种情况进入老年代">两种情况进入老年代</h3>
+<ul>
+<li>Age&gt;MaxTenuringThreshold</li>
+<li>Survivor空间中相同年龄所有对象大小的总和大于Survivor空间的一半，年龄大于或等于该年龄的对象直接进入老年代</li>
+</ul>
+<h3 id="空间分配担保">空间分配担保</h3>
+<figure data-type="image" tabindex="3"><img src="http://www.wangych.top/upload/2019/7/%E7%A9%BA%E9%97%B4%E5%88%86%E9%85%8D%E6%8B%85%E4%BF%9D-4038b245f9ee4f1c89ee63a27d822c3c.jpg" alt="空间分配担保" loading="lazy"></figure>
+<h3 id="minor-gc与full-gc">Minor GC与Full GC</h3>
+<ul>
+<li>Minor GC是新生代GC，对象朝生夕灭，回收频繁，速度较快</li>
+<li>Full GC/Major GC是老年代GC，慢</li>
+</ul>
+<p><em>XMind: ZEN - Trial Version</em></p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[重读深入理解Java虚拟机（一）—— 读深入理解JVM之内存管理]]></title>
+        <id>https://yuncheng1998.github.io/post/BSpDNhcfw/</id>
+        <link href="https://yuncheng1998.github.io/post/BSpDNhcfw/">
+        </link>
+        <updated>2021-04-12T02:25:19.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="jvm内存管理">JVM内存管理</h1>
+<p>最近在读 <a href="https://book.douban.com/subject/24722612/"><em>深入理解 Java虚拟机</em></a>，这里列出一下JVM内存管理部分大纲，还需配合该书进行学习。</p>
+<h3 id="运行时数据区">运行时数据区</h3>
+<h4 id="线程隔离">线程隔离</h4>
+<ul>
+<li>程序计数器
+<ul>
+<li>Java方法
+<ul>
+<li>虚拟机字节码指令的地址</li>
+</ul>
+</li>
+<li>Native方法
+<ul>
+<li>计数值为空</li>
+</ul>
+</li>
+<li>唯一一个没有规定OutOfMemoryError的区域</li>
+</ul>
+</li>
+<li>Java虚拟机栈
+<ul>
+<li>描述方法执行的内存模型
+<ul>
+<li>方法执行时创建栈帧
+<ul>
+<li>局部变量表
+<ul>
+<li>编译期可知的基本数据类型和引用类型</li>
+<li>64位长度的long和double类型占用2个局部变量空间（2 slot）</li>
+<li>编译期间大小分配完成，运行期间不会再动态更改</li>
+</ul>
+</li>
+<li>操作数栈</li>
+<li>动态链接</li>
+<li>方法出口</li>
+</ul>
+</li>
+<li>每个方法对应一个栈帧入栈和出栈的过程</li>
+</ul>
+</li>
+<li>异常
+<ul>
+<li>StackOverflowError
+<ul>
+<li>线程请求的栈深度超过虚拟机允许的</li>
+</ul>
+</li>
+<li>OutOfMemoryError
+<ul>
+<li>虚拟机栈动态扩展时无法申请到足够的内存</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>本地方法栈
+<ul>
+<li>为Native方法服务</li>
+<li>Sun HotSpot将本地方法栈和虚拟机栈合二为一</li>
+</ul>
+</li>
+</ul>
+<h4 id="线程共享">线程共享</h4>
+<ul>
+<li>方法区
+<ul>
+<li>用于存储已被虚拟机加载的类信息、常量、静态变量、即时编译器编译后的代码</li>
+<li>Java虚拟机规范对方法区管理宽松
+<ul>
+<li>不需要连续内存</li>
+<li>可以固定大小或扩展</li>
+<li>可以不选择垃圾收集
+<ul>
+<li>对常量池的回收和对类型的卸载</li>
+<li>回收成绩难以令人满意</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>运行时常量池
+<ul>
+<li>存放class文件
+<ul>
+<li>Class文件有常量池信息，存放编译期生成的各种字面量和符号引用
+<ul>
+<li>在类加载后进入方法区的运行时常量池</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>发生区内存大小无法满足需要时
+<ul>
+<li>OutOfMemoryError</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>堆
+<ul>
+<li>存放对象实例</li>
+<li>垃圾收集的主要区域</li>
+<li>堆的划分
+<ul>
+<li>内存分配的角度
+<ul>
+<li>多个线程私有的分配缓冲区</li>
+</ul>
+</li>
+<li>内存回收的角度
+<ul>
+<li>根据分代收集法细分
+<ul>
+<li>新生代</li>
+<li>老年代</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>逻辑上连续即可</li>
+<li>可以固定大小也可以是可扩展的</li>
+</ul>
+</li>
+</ul>
+<h3 id="直接内存">直接内存</h3>
+<h4 id="堆外内存">堆外内存</h4>
+<h4 id="nio类">NIO类</h4>
+<ul>
+<li>基于通道与缓冲区的I/O方式</li>
+<li>使用Native函数直接分配堆外内存</li>
+<li>通过Java堆中的DirectByteBuffer对象作为堆外内存的引用</li>
+<li>避免在Java堆和Native堆中来回复制数据</li>
+</ul>
+<h3 id="对象的创建">对象的创建</h3>
+<h4 id="创建对象的过程">创建对象的过程</h4>
+<ul>
+<li>遇到new指令，检查该类是否已经被加载、解析、初始化</li>
+<li>加载后确定了内存大小，从Java堆中划出内存
+<ul>
+<li>内存分配方式
+<ul>
+<li>指针碰撞</li>
+<li>空闲列表</li>
+</ul>
+</li>
+<li>Java堆是否规整选择分配方式
+<ul>
+<li>根据垃圾收集器是否带有压缩决定</li>
+</ul>
+</li>
+<li>并发情况下修改指针
+<ul>
+<li>对分配内存空间的动作进行同步处理
+<ul>
+<li>采用CAS配上失败重试的方式保证原子性</li>
+</ul>
+</li>
+<li>将内存分配动作按照线程划分在不同的空间中
+<ul>
+<li>每个线程在Java堆中预先分配一小块内存，本地线程分配缓冲</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>将内存空间都初始化为零值
+<ul>
+<li>成员变量默认的数据类型</li>
+</ul>
+</li>
+<li>虚拟机对对象做设置，设置对象头
+<ul>
+<li>对应类</li>
+<li>怎样找到类的元数据信息</li>
+<li>对象的哈希码</li>
+<li>对象的CG分代年龄</li>
+</ul>
+</li>
+</ul>
+<h4 id="对象的内存布局">对象的内存布局</h4>
+<ul>
+<li>对象头
+<ul>
+<li>存储对象自身运行时数据（Mark Word）</li>
+<li>类型指针（指向类元数据的指针）
+<ul>
+<li>JVM通过类型指针确定对象是哪个类</li>
+<li>查找类时不需要经过对象本身</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>实例数据
+<ul>
+<li>对象真正存储的有效信息</li>
+<li>受到JVM分配参数策略和源码中字段定义顺序的影响</li>
+</ul>
+</li>
+<li>对齐填充
+<ul>
+<li>HotSpot中对象的起始地址必须是8字节的整数倍</li>
+<li>通过对齐填充来补全</li>
+</ul>
+</li>
+</ul>
+<h4 id="对象的访问定位">对象的访问定位</h4>
+<ul>
+<li>通过栈上的reference数据来操作堆上的具体对象</li>
+<li>引用定位堆上对象的方式
+<ul>
+<li>句柄访问
+<ul>
+<li>堆的划分
+<ul>
+<li>句柄池
+<ul>
+<li>句柄对象</li>
+</ul>
+</li>
+<li>实例池
+<ul>
+<li>实例对象</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>句柄对象
+<ul>
+<li>到对象实例数据的指针
+<ul>
+<li>指向实例池</li>
+</ul>
+</li>
+<li>到对象类型数据的指针
+<ul>
+<li>指向方法区</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>优点
+<ul>
+<li>稳定的句柄地址
+<ul>
+<li>移动对象只要改变句柄对象的实例数据指针</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>指针直接访问
+<ul>
+<li>堆中实例数据中存在到对象类型数据的指针
+<ul>
+<li>指向方法区的对象类型数据</li>
+</ul>
+</li>
+<li>优点
+<ul>
+<li>速度快</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[算法周记（启发式搜索、有限内存中大数据量中查找、找出数组中超过一半的数、不连续的整数中找出最大间隔））]]></title>
+        <id>https://yuncheng1998.github.io/post/lXK0TE-8V/</id>
+        <link href="https://yuncheng1998.github.io/post/lXK0TE-8V/">
+        </link>
+        <updated>2021-04-11T15:27:45.000Z</updated>
+        <content type="html"><![CDATA[<h3 id="启发式搜索">启发式搜索</h3>
+<p>在 <em>《漫画算法》</em> 中看到 <code>A*寻路算法</code>，这是一种用于寻找最短路径的算法，例如在有障碍的图中找到从A到B的最短路径，就会应用这个算法。将地图以方格进行划分，A和B的位置分别占据一个方格，程序维持一个OpenList和CloseList来存储新获得的节点和已经检查过的节点，每个方格存储三个特性(到起点的距离s，到终点的距离e，二者只和h)。第一次将A周围的四个方格放到OpenList中，将A作为这四个方格的父节点，然后选出h最小的放到CloseList中，将这个方格周围的方格再进行相同的操作，直到将终点放到CloseList中。另外需要记录每一个方格的父节点，这样当只需要根据父节点从终点向上回溯就可以找到最短路径。</p>
+<h3 id="有限内存中大数据量中查找">有限内存中大数据量中查找</h3>
+<ul>
+<li>如何在20亿个整数中查找一个数是否存在<br>
+如果将每个整数都使用int来存储，那么需要使用大约要 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mn>2</mn><mn>31</mn></msup><mo>∗</mo><msup><mn>2</mn><mn>5</mn></msup></mrow><annotation encoding="application/x-tex">2^{31} * 2^{5}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mtight">1</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">5</span></span></span></span></span></span></span></span></span></span></span></span> 共8G内存。那么若内存有限，这种使用int来存储的方法就不能使用，这就可以使用Bitmap来进行改进。根据整数的范围至多有 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mn>2</mn><mn>32</mn></msup></mrow><annotation encoding="application/x-tex">2^{32}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span> 个数，因此可以申请长度为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mn>2</mn><mn>32</mn></msup></mrow><annotation encoding="application/x-tex">2^{32}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span> bit的空间来存储这些数，每一个bit代替1个数，这样只需要 512MB的内存空间即可存入。</li>
+<li>如何在20亿个整数中找到出现次数最多的整数<br>
+要记录出现的次数就不能使用Bitmap，若要保证不会超过内存，那么需要对其进行分批处理。如果使用Hash表来进行记录，每条记录需要占用两个int的空间，即8Byte，这样需要16GB的内存。因此需要考虑进行分批处理，若内存只有2GB，则将其分为10份，让每份数据量只占用1.6GB，由于给出的数未必是均匀分布的，因此可以设计一个好的Hash映射函数，将其均匀的映射到20亿的数值范围内。</li>
+<li>如何在40亿个整数中找到出现次数最多的整数<br>
+当数据量达到10亿时，我们还需要考虑假如某个数据出现的次数太多，超过了int整数的表示范围应该如何处理，对于40亿级别，由于int类型表示最大整数在21亿左右，因此将其初值设置为int表示的最小负数值即可，即 <code>-2147483648</code></li>
+</ul>
+<h3 id="找出数组中超过一半的数">找出数组中超过一半的数</h3>
+<p>如果一个数组中有超过一半的数，那么将任意两个不相等的数相互抵消，最后剩下的数必然是超过一半的数。这个算法前提是必须保证存在这种数，如果不能保证，仍然需要排序后找出中间的数，然后与第一个数和最后一个数比较。如果n为奇数，那么需要保证<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">n/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span></span></span></span>，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>0</mn></mrow><annotation encoding="application/x-tex">0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span>，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">n-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.66666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span>三个位置上的数有两个相等。如果n为偶数，那么需要保证<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">n/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span></span></span></span>和<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>0</mn></mrow><annotation encoding="application/x-tex">0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span>相等或<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">n/2-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span>与<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">n</span></span></span></span>相等。</p>
+<h3 id="不连续的整数中找出最大间隔">不连续的整数中找出最大间隔</h3>
+<p>若给出的数不多，可以使用计数排序，即使用下标进行计数。用每个数减去最小的数，然后使用bitmap来储存，然后根据0连续出现的次数来确定。如果数的间隔较大，那么可以使用桶排序，例如共有15个数，最小的数为0，最大数为10w，那么可以分成10个桶，分别存储0-1w，1-2w，...。现根据空桶进行查找，如都集中在某个桶那么就再次分桶计数，直到找出间隔最大的。</p>
 ]]></content>
     </entry>
 </feed>
