@@ -1,0 +1,406 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>设计模式（八）适配器模式与外观模式 | 云程的BLOG</title>
+<link rel="shortcut icon" href="https://yuncheng1998.github.io/favicon.ico?v=1638112312752">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://yuncheng1998.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="设计模式（八）适配器模式与外观模式 | 云程的BLOG - Atom Feed" href="https://yuncheng1998.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-144214379-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-144214379-1');
+</script>
+
+
+    <meta name="description" content="提出问题
+我们经常会遇到提供的接口与我们需要的接口不一样的情况发生，就像我们需要二孔插座却只找到三孔插座一样。虽然接口不同，但所提供的功能是相似的，这时我们通常会使用一个适配器来解决，这个适配器将三孔转换为二孔，供插头使用。
+适配器模式
+适..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://yuncheng1998.github.io">
+  <img class="avatar" src="https://yuncheng1998.github.io/images/avatar.png?v=1638112312752" alt="">
+  </a>
+  <h1 class="site-title">
+    云程的BLOG
+  </h1>
+  <p class="site-description">
+    潜龙勿用
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              设计模式（八）适配器模式与外观模式
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-05-05
+              </span>
+              <span>
+                10 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h1 id="提出问题">提出问题</h1>
+<p>我们经常会遇到提供的接口与我们需要的接口不一样的情况发生，就像我们需要二孔插座却只找到三孔插座一样。虽然接口不同，但所提供的功能是相似的，这时我们通常会使用一个适配器来解决，这个适配器将三孔转换为二孔，供插头使用。</p>
+<h1 id="适配器模式">适配器模式</h1>
+<p>适配器模式提供一个接口作为两个不兼容接口之间的桥梁，当我们需要一个二孔插座接口，但只提供了不兼容的三孔插座时，我们可以设计一个三孔插座适配器，暴露出二孔插座的接口，内部实现调用三孔插座的相关方法。例如我们需要一直鸭子，但我们只有火鸡原料，要将火鸡通过适配器伪装成鸭子，只需要一个实现了鸭子接口的适配器类，其内部具体方法的实现仍调用火鸡对象的相关方法替代。</p>
+<p>首先我们实现鸭子与火鸡两个类</p>
+<pre><code class="language-java">/**
+ * Target
+ */
+public interface Duck {
+    void quack();
+    void fly();
+}
+/**
+ * Adaptee
+ */
+public interface Turkey {
+    void gobble();
+    void fly();
+}
+/**
+ * 具体的类
+ */
+public class MallardDuck implements Duck {
+    @Override
+    public void quack() {
+        System.out.println(&quot;Quack&quot;);
+    }
+    @Override
+    public void fly() {
+        System.out.println(&quot;Fly a long distance&quot;);
+    }
+}
+
+public class WildTurkey implements Turkey {
+    @Override
+    public void gobble() {
+        System.out.println(&quot;Gobble gobble&quot;);
+    }
+    @Override
+    public void fly() {
+        System.out.println(&quot;Fly a short distance&quot;);
+    }
+}
+</code></pre>
+<p>观察两个类，可以发现他们的方法是类似的，都只有叫和飞两个方法，所以我们要想<strong>实现一个适配器来使 Turkey 转换为 Duck</strong>，只需要实现 Duck 接口，然后实现方法时调用 Turkey 对象的方法即可。</p>
+<pre><code class="language-java">public class TurkeyAdapter implements Duck {
+
+    private final Turkey turkey;
+
+    /**
+     * 在构造器中传入一个 Turkey 对象
+     */
+    public TurkeyAdapter(Turkey turkey) {
+        this.turkey = turkey;
+    }
+
+    /**
+     * 使用 Turkey 对象的方法实现 Duck 接口中的方法
+     */
+    @Override
+    public void quack() {
+        turkey.gobble();
+    }
+
+    @Override
+    public void fly() {
+        for (int i = 0; i &lt; 3; i++) {
+            turkey.fly();
+        }
+    }
+}
+</code></pre>
+<p>这样我们就可以将一个 Turkey 转换为 Duck</p>
+<pre><code class="language-java">public class Test {
+    public static void main(String[] args) {
+        MallardDuck duck = new MallardDuck();
+        WildTurkey turkey = new WildTurkey();
+        System.out.println(&quot;True Duck:&quot;);
+        duck.quack();
+        duck.fly();
+        System.out.println(&quot;==============================&quot;);
+        // 将火鸡伪装为鸭子，提供一个面向火鸡接口的适配器，得到一个鸭子对象
+        Duck turkeyAdapter = new TurkeyAdapter(turkey);
+        System.out.println(&quot;Duck from turkeyAdapter:&quot;);
+        turkeyAdapter.quack();
+        turkeyAdapter.fly();
+    }
+}
+</code></pre>
+<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1620148970201.png" alt="" loading="lazy"></figure>
+<p>可以看到一个 Turkey 对象经过适配器后可以适配 Duck 接口，调用 Duck 接口中的方法。</p>
+<p>适配器模式就是<strong>将一个接口转换为另一种接口</strong>，解决相似接口不适配的问题。用户看不到 Adaptee，察觉不到适配器在其中的转换作用。适配器模式通过一个 Adapter 将用户个被调用者解耦，用户使用的是 Adapter 提供的目标接口方法，Adapter 再调用 Adaptee 的方法。<br>
+<img src="https://yuncheng1998.github.io/post-images/1620149033939.png" alt="" loading="lazy"><br>
+这种方式实现的适配器有如下特点</p>
+<ul>
+<li>只实现目标接口</li>
+<li>适配器内部包含一个被适配对象</li>
+<li>在方法的实现中调用 Adaptee 对象的方法</li>
+</ul>
+<h2 id="适配器模式与装饰者模式">适配器模式与装饰者模式</h2>
+<p>适配器模式与装饰者模式都是将一个对象转换成我们需要的类型，但两者本质上存在着巨大的差异</p>
+<ul>
+<li>适配器模式传入被适配对象后<strong>得到一个新类</strong>；而装饰者模式中被装饰对象与得到的对象都<strong>来源与一个超类</strong>，在一个类族中。</li>
+<li>适配器模式中没有增加新的方法，只是<strong>改变了方法的实现方式使其适配新的接口</strong>；而装饰者模式是为对象<strong>提供了格外的功能</strong>。</li>
+</ul>
+<h1 id="外观模式">外观模式</h1>
+<p>适配器模式是对一个接口进行适配，我们同样可以设计一个包装多个被适配者的适配器，这就是外观模式 <em>Facade Pattern</em> 。这同样是一个改变接口的模式，但他改变的原因是为了简化接口。例如我们对智能家居的控制，假设我们要开启家庭影院模式，我们需要做如下操作</p>
+<pre><code class="language-java">// 打开爆米花机
+popper.on();
+popper.pop();
+// 灯光 10% 亮度
+lights.dim(10);
+// 放下屏幕
+screen.down();
+// 打开投影机
+projector.on();
+projector.setInput(dvd);
+projector.wideScreenMode();
+// 打开功放
+amp.on();
+amp.setDvd(dvd);
+amp.setSurroundSound();
+amp.setVolume();
+// 打开 DVD 播放机
+dvd.on();
+dvd.play();
+</code></pre>
+<p>这一系列的步骤必定是及其麻烦的，并且在结束时我们还要将这些动作反向执行，那么我们可以设计一个提供更合理接口的外观类，将这些复杂的子系统放入其中。</p>
+<figure data-type="image" tabindex="2"><img src="%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F%E4%B8%83%E9%80%82%E9%85%8D%E5%99%A8%E6%A8%A1%E5%BC%8F/facadePattern.png" alt="FacadePattern" loading="lazy"></figure>
+<p>在 <em>HomeTheaterFacade</em> 中依次调用我们需要的功能，提供 <em>watchMovie()</em> 和 <em>endMovie()</em> 方法即可，这样我们只需要执行 <em>HomeTheaterFacade</em> 对象的一个方法就可以了。</p>
+<pre><code class="language-java">public class HomeTheaterTestDrive {
+    public static void main(String[] args) {
+        HomeTheaterFacade homeTheater = new HomeTheaterFacade(amp, tuner, dvd, cd, projector, screen, lights, popper);
+        homeTheater.watchMovie(&quot;Raiders of the Lost Ark&quot;);
+        homeTheater.endMovie();
+    }
+}
+</code></pre>
+<p>外观模式提供了一个统一的接口，用来访问子系统中的一群接口，这个高层接口让子系统更容易使用。</p>
+<h2 id="外观模式与命令模式">外观模式与命令模式</h2>
+<p>其实这个问题也可以是使用命令模式 <em>Command Pattern</em> 中的宏命令来解决，将每一个命令都包装成对象，然后有一个宏命令对象去发出这些命令。外观模式与命令模式都可以降低调用者与执行者的耦合度，但他们的侧重点是不同的：</p>
+<ul>
+<li><em>Facade Pattern</em> 对子系统建立高层接口，然后暴露这个高层接口供外界调用，使得接口简单化，从而降低外界控制和子系统的耦合度</li>
+<li><em>Command Pattern</em> 通过将命令包装成对象来解耦</li>
+</ul>
+<h2 id="最少知识原则">最少知识原则</h2>
+<p>最少知识原则 <em>Least Knowledge Principle</em> 又称迪米特法则 <em>Law of Demeter</em> ，是一种面向对象程序设计的指导原则，描述了一种保持代码松耦合的策略，可以归纳为</p>
+<blockquote>
+<p>Only talk to your immediate friends</p>
+</blockquote>
+<p>原则指出，在设计一个系统时，不管是任何对象，都要注意他所交互的类有哪些，并注意他们是如何交互的。这个原则希望我们在设计中不要让太多的类耦合在一起，避免类之间过多的依赖。在面向对象的程序设计中应用最小知识原则，要注意对于对象 O 中的一个方法 m，m方法仅能访问如下类型的对象</p>
+<ul>
+<li>O 对象自身</li>
+<li>m 方法参数中的对象</li>
+<li>在 m 方法内创建的对象</li>
+<li>O 直接依赖的对象，即 O 的一个组件</li>
+</ul>
+<pre><code class="language-java">public class Car {
+	Engine engine;	// Car的组件, engine可以访问
+    
+    public void start(Key key) {
+        Doors doors = new Door();	// 方法内创建
+        boolean authorized = key.turns();	// key 是方法参数中的对象
+        if (authorized) {
+            engine.start();			// 组件
+            doors.lock();			// 方法内创建
+        }
+    }
+}
+// 这段程序符合 Least Knowledge Principle
+</code></pre>
+<pre><code class="language-java">public float getTemperature () {
+    Thermometer thermometer = station.getThermometer();	// 温度计对象不符合任何情况，违反了LKP
+    return thermometer.getTemperature();
+}
+// 应该将在 station 中加入一个 getTemperature() 方法来向温度计请求温度
+</code></pre>
+<p>​	最少知识原则减少了对象之间的依赖，减少了软件的维护成本，但这个原则也会导致更多的包装类被制造出来，用来处理和其他组件的沟通，可能会导致复杂度和开发时间的增加。</p>
+<h1 id="适配器模式分析">适配器模式分析</h1>
+<p><em>Adapter Pattern</em> 将一个接口转换成客户端希望的另一个接口，使不兼容的类可以一起工作。通常由 <em>Target</em> 目标抽象类、<em>Adapter</em> 适配器类、<em>Adaptee</em> 被适配者类、<em>Client</em> 客户类四个角色组成。</p>
+<ul>
+<li>优点
+<ul>
+<li>将目标类与被适配者类解耦，引入一个适配器类来重用现有的被适配者类而无须修改原有代码</li>
+<li>增加类的复用性和透明性，将具体实现封装在适配器类中，对于客户端来说是透明的</li>
+<li>扩展性和灵活性很好。可以通过修改配置文件方便的更换适配器</li>
+<li>对于类适配器，可以在适配器类中置换一些被适配者的方法</li>
+<li>对于对象适配器，可以把多个不同的被适配者适配到同一个目标，即被适配者类和它的子类</li>
+</ul>
+</li>
+<li>缺点
+<ul>
+<li>类适配器模式只能应用于支持多重继承的语言中</li>
+<li>对象适配器模式在置换被适配者的方法时实现困难</li>
+</ul>
+</li>
+<li>适用环境
+<ul>
+<li>系统需要使用现有的类，而这些类的接口不太符合系统的需要</li>
+<li>想要建立一个可以重复使用的类，能够用于和一些没有太大关联的类，包括可能引入的新类一起工作</li>
+</ul>
+</li>
+</ul>
+<h1 id="外观模式分析">外观模式分析</h1>
+<p>​	<em>Facade Pattern</em> 通过引入外观对象使子系统间的通信和相互依赖关系达到最小，为子系统的访问提供了一个简单而单一的入口。外观模式体现了 <em>Least Knowledge Principle</em>，引入新的外观类降低原有系统的复杂度，同时降低客户端与子系统的耦合度，客户端无须关心子系统的工作细节，只需要通过外观角色即可调用相关功能。</p>
+<ul>
+<li>优点
+<ul>
+<li>外观模式对客户端屏蔽了子系统组件，减少了客户处理的对象数目使得对子系统的使用更加简单</li>
+<li>使客户端与子系统之间松耦合，子系统发生变化时只需要调整外观类即可</li>
+<li>只是提供了一个访问子系统的接口，不影响直接对子系统的访问</li>
+</ul>
+</li>
+<li>缺点
+<ul>
+<li>在不引入抽象外观类的情况下，增加新的子系统需要修改外观类或客户端的源码，违背开闭原则</li>
+</ul>
+</li>
+<li>适用环境
+<ul>
+<li>要为一个复杂的子系统提供一个简单的接口</li>
+<li>客户端与多个子系统之间有很大的依赖，使用外观模式将两者解耦</li>
+<li>层次化结构使用外观模式定义系统中每一层的入口，层之间不直接产生联系而是使用外观类，降低层之间的耦合度</li>
+</ul>
+</li>
+</ul>
+<h1 id="其他">其他</h1>
+<p>源码 <a href="https://github.com/yuncheng1998/PatternDesign">Github</a></p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E6%8F%90%E5%87%BA%E9%97%AE%E9%A2%98">提出问题</a></li>
+<li><a href="#%E9%80%82%E9%85%8D%E5%99%A8%E6%A8%A1%E5%BC%8F">适配器模式</a>
+<ul>
+<li><a href="#%E9%80%82%E9%85%8D%E5%99%A8%E6%A8%A1%E5%BC%8F%E4%B8%8E%E8%A3%85%E9%A5%B0%E8%80%85%E6%A8%A1%E5%BC%8F">适配器模式与装饰者模式</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A4%96%E8%A7%82%E6%A8%A1%E5%BC%8F">外观模式</a>
+<ul>
+<li><a href="#%E5%A4%96%E8%A7%82%E6%A8%A1%E5%BC%8F%E4%B8%8E%E5%91%BD%E4%BB%A4%E6%A8%A1%E5%BC%8F">外观模式与命令模式</a></li>
+<li><a href="#%E6%9C%80%E5%B0%91%E7%9F%A5%E8%AF%86%E5%8E%9F%E5%88%99">最少知识原则</a></li>
+</ul>
+</li>
+<li><a href="#%E9%80%82%E9%85%8D%E5%99%A8%E6%A8%A1%E5%BC%8F%E5%88%86%E6%9E%90">适配器模式分析</a></li>
+<li><a href="#%E5%A4%96%E8%A7%82%E6%A8%A1%E5%BC%8F%E5%88%86%E6%9E%90">外观模式分析</a></li>
+<li><a href="#%E5%85%B6%E4%BB%96">其他</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://yuncheng1998.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

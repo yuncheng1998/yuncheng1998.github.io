@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://yuncheng1998.github.io</id>
     <title>云程的BLOG</title>
-    <updated>2021-11-03T11:34:16.554Z</updated>
+    <updated>2021-11-28T15:12:01.559Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://yuncheng1998.github.io"/>
     <link rel="self" href="https://yuncheng1998.github.io/atom.xml"/>
@@ -43,296 +43,6 @@
 <p><em><strong>Lamport Timestamps</strong></em>：上面说的都是物理时钟，而<em>Lamport</em>提出的是逻辑时钟概念，通过为每一操作带上本地或接收到消息的时间戳来解决访问链路的顺序问题。<em>Lamport Timestamps</em>的局限只能处理有相关性记录的顺序，像上文说到数据库日志记录就无能为力了。</p>
 <p>上述方案可以解决时钟一致性，但这远远不够。我们用<em>MQ</em>做服务解耦就会经常遇到顺序问题，比如将用户的关键操作流程通过<em>Kafka</em>传送到日志服务，日志就要保证顺序写入。但目前<em>Kafka</em>及主流的<em>MQ</em>都无法保证严格顺序，因为成本太高：要先保证生产者都同步生产消息到<em>MQ</em>，<em>MQ</em>的存储要避免多个写入节点，并且消费者只能有一个，进行逐条消费等，这在性能、可用性上都大打折扣。这时我们只能根据用户<em>Id</em>计算<em>hash</em>后分配到相同的写入节点（对应于<em>Kafka</em>的<em>Partition</em>），这样就能做到同一用户的日志消费顺序等同于日志的发送（同步发送方式）顺序。</p>
 <p>顺序处理的成本不低，在开发中我们应该尽量避免。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Kafka入门（三）消费者]]></title>
-        <id>https://yuncheng1998.github.io/post/lcHc6iPLj/</id>
-        <link href="https://yuncheng1998.github.io/post/lcHc6iPLj/">
-        </link>
-        <updated>2021-05-18T07:31:21.000Z</updated>
-        <content type="html"><![CDATA[<p>应用程序使用<em>KafkaConsumer</em> 订阅主题并接收这些主题的消息，然后把消息保存起来。</p>
-<p>如果生产者对该主题的写入速度很快，单个消费者跟不上消息生成的速度，这时就需要多个消费者共同参与消费，对消息进行分流处理。消费者从属于消费者群组。<strong>一个群组中的消费者订阅的都是相同的主题</strong>，每个消费者接收主题一部分分区的消息。</p>
-<p>向群组中增加消费者是<strong>横向伸缩消费能力</strong>的主要方式，创建主题时使用比较多的分区数可以在消费负载高的情况下增加消费者来提升性能。消费者的数量如果大于分区数多，那么会有消费者是空闲的，没有任何帮助。</p>
-<p><em>Kafka</em> 一个很重要的特性是：只需写入一次消息，就可以支持任意多的应用读取这个消息。假如新增了一个有两个消费者的消费组，那么就演变为下图这样。<br>
-<img src="https://yuncheng1998.github.io/post-images/1621323205486.png" alt="" loading="lazy"></p>
-<p>此时两个消费组都能收到<em>T1</em> 主题的全量消息，在逻辑意义上来说它们属于不同的应用。</p>
-<p>总结：如果应用需要读取全量消息，那么请为该应用设置一个消费组；如果该应用消费能力不足，那么可以在这个消费组里增加消费者。</p>
-<h1 id="消费者组和分区重平衡">消费者组和分区重平衡</h1>
-<h2 id="消费者组是什么">消费者组是什么</h2>
-<p>消费者组*（Consumer Group）<em>是由一个或多个消费者实例</em>（Consumer Instance）<em>组成的群组，具有可扩展性和可容错性。组内的消费者共享一个消费者组ID</em>（Group ID）*，对一个主题进行订阅和消费，同一组中的消费者只能消费一个分区的消息，多余的消费者会闲置，派不上用场。</p>
-<p>两种消费方式</p>
-<ul>
-<li>点对点的消费方式：一个消费者群组消费一个主题中的消息。</li>
-<li>发布-订阅模式：一个主题中的消息被多个消费者群组共同消费。</li>
-</ul>
-<h2 id="消费者重平衡">消费者重平衡</h2>
-<p>重平衡：这种把分区的所有权通过一个消费者转到其他消费者的行为。</p>
-<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1621323266224.png" alt="" loading="lazy"></figure>
-<p>当新增或减少消费者时，且消费者的数量小于分区数量时，就会触发重平衡。</p>
-<p>优点：为消费者群组带来了<strong>高可用性</strong>和<strong>伸缩性</strong>，用户可以放心的添加消费者或移除消费者。</p>
-<p>缺点：在重平衡期间，消费者无法读取消息，造成整个消费者组在重平衡的期间都不可用。当分区被重新分配给新消费者时，消息当前的读取状态会丢失，它有可能还需要去刷新缓存，在它重新恢复状态之前会拖慢应用程序。</p>
-<h1 id="创建消费者">创建消费者</h1>
-<h2 id="订阅主题">订阅主题</h2>
-<p><em>subscribe()</em> 方法接受一个主题列表作为参数，使用起来比较简单</p>
-<pre><code class="language-java">Properties properties = new Properties();
-properties.put(&quot;bootstrap.server&quot;,&quot;192.168.1.9:9092&quot;);     properties.put(&quot;key.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;);   properties.put(&quot;value.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;);
-KafkaConsumer&lt;String,String&gt; consumer = new KafkaConsumer&lt;&gt;(properties);
-// 订阅主题，参数是一个正则表达式
-consumer.subscribe(Arrays.asList(&quot;customerTopic&quot;));
-</code></pre>
-<h2 id="轮询">轮询</h2>
-<p><em>Kafka</em> 支持订阅/发布模式的，生产者发送数据给<em>Broker</em>，消费者采用轮询的方式定期去<em>Broker</em> 中进行数据的检索</p>
-<pre><code class="language-java">try {
-  // 轮询
-  while (true) {
-    // 循环请求数据（心跳）
-    // records包含记录所属主题、分区、消息在分区中的偏移量以及键值对
-    ConsumerRecords&lt;String, String&gt; records = consumer.poll(Duration.ofSeconds(100));
-    // 逐条处理每条记录
-    for (ConsumerRecord&lt;String, String&gt; record : records) {
-      log.debug(record.topic() + record.partition() + record.offset() + record.key() + record.value());
-      // 处理record
-      // ...
-    }
-  }
-} finally {
-  // 使用close()方法关闭消费者，会立即触发一次重平衡，而不是等待群组协调器发现它不再发送心跳并认定它已经死亡。
-  consumer.close();
-}
-</code></pre>
-<p><strong>线程安全性</strong></p>
-<p>在同一个群组无法让一个线程运行多个消费者，也无法让多个线程安全共享一个消费者。按照规则，一个消费者使用一个线程，如果一个消费者群组中多个消费者都要运行，必须让每个消费者在自己的线程中运行，可以使用<em>Java</em> 中的<em>ExecutorService</em> 启动多个消费者进行进行处理。</p>
-<h1 id="参数配置">参数配置</h1>
-<p><em><strong>fetch.min.bytes</strong></em></p>
-<p>设置消费者从服务器获取记录的最小字节数。<em>broker</em> 在收到消费者的数据请求时，如果可用的数据量小于<em>fetch.min.bytes</em> 指定的大小，会等到有足够的可用数据时才把它返回给消费者。这样在主题使用频率低时不需要处理消息，降低消费者和<em>broker</em> 的工作负载。如果没有很多可用数据，但消费者的 CPU 使用率很高，那么就需要把该属性的值设得比默认值大。如果消费者的数量比较多，把该属性的值调大可以降低 broker 的工作负载。</p>
-<p><em><strong>fetch.max.wait.ms</strong></em></p>
-<p>设置消息从<em>broker</em>发送到<em>Consumer</em> 的最长时间，默认<em>500ms</em>。当要打包消息的大小不满足<em>fetch.min.bytes</em> 时，则等待<em>fetch.max.wait.ms</em> 之后，不管满足不满足，将这个批次的消息发送给消费者。如果要降低潜在的延迟，就可以把参数值设置的小一些。如果<em>fetch.max.wait.ms</em> 被设置为 <em>100ms</em>，<em>fetch.min.bytes</em> 的值设置为<em>1MB</em>，那么<em>Kafka</em> 在收到消费者请求后，要么返回<em>1MB</em> 的数据，要么在<em>100ms</em> 后返回所有可用的数据。</p>
-<p><em><strong>max.partition.fetch.bytes</strong></em></p>
-<p>设置服务器从每个分区里返回给消费者的最大字节数，默认值为<em>1MB</em>。<em>KafkaConsumer.poll()</em> 方法从每个分区获得的记录不超过 <em>max.partition.fetch.bytes</em> 指定的字节。在默认值下，如果某主题有20个分区和5个消费者，那么每个消费者需要至少4MB的可用内存来接收记录（防止某个消费者崩溃，剩下的消费者处理更多分区）。另外该值需要大于<em>broker</em> 能够接收的最大消息的字节数*（max.message.size）*，否则消费者可能无法读取这些消息，导致消费者一直挂起重试。</p>
-<p>在设置该属性需要考虑消费者处理数据的时间。消费者需要频繁的调用<em>poll()</em> 方法来避免会话过期和发生分区再平衡，如果返回的数据太多，消费者处理时间长，可能无法及时进行下一个轮询来避免会话过期。这时需要调大值或者延长会话过期时间。</p>
-<p><em><strong>session.timeout.ms</strong></em></p>
-<p>设置消费者在被认为死亡之前可以与服务器断开连接的时间，默认是 <em>3s</em>。认定为死亡后，协调器就会触发重平衡。把它的分区分配给消费者群组中的其它消费者。把值设置的比默认值小，可以更快地检测和恢复崩溃的节点，不过长时间的轮询或垃圾收集可能导致非预期的重平衡。把该属性的值设置得大一些，可以减少意外的重平衡，不过检测节点崩溃需要更长的时间。</p>
-<p><em><strong>heartbeat.interval.ms</strong></em></p>
-<p>设置<em>poll()</em> 方法向群组协调器发送心跳的频率，一般和<em>session.timeout.ms</em>同时修改，<em>heartbeat.interval.ms</em>必须比<em>session.timeout.ms</em> 小，一般为后者的三分之一。</p>
-<p><em><strong>auto.offset.reset</strong></em></p>
-<p>设置消费者在读取一个没有偏移量的分区或者偏移量无效的情况下的该如何处理。它的默认值是<em>latest</em>：在偏移量无效的情况下，消费者将从最新的记录开始读取数据。另一个值是<em>earliest</em>：在偏移量无效的情况下，消费者将从起始位置处开始读取分区的记录。</p>
-<p><em><strong>enable.auto.commit</strong></em></p>
-<p>设置消费者是否自动提交偏移量，默认值是 <em>true</em>，为了尽量避免出现重复数据和数据丢失，可以设置为 <em>false</em>，由自己控制何时提交偏移量。如果把它设置为 true，还可以通过 <strong>auto.commit.interval.ms</strong> 属性来控制提交的频率</p>
-<p><em><strong>partition.assignment.strategy</strong></em></p>
-<p>我们知道，分区会分配给群组中的消费者。<code>PartitionAssignor</code> 会根据给定的消费者和主题，决定哪些分区应该被分配给哪个消费者，Kafka 有两个默认的分配策略<code>Range</code> 和 <code>RoundRobin</code></p>
-<p><em><strong>client.id</strong></em></p>
-<p>该属性可以是任意字符串，broker 用他来标识从客户端发送过来的消息，通常被用在日志、度量指标和配额中</p>
-<p><em><strong>max.poll.records</strong></em></p>
-<p>设置单次调用 *call()*方法能够返回的记录数量，控制在轮询中需要处理的数据量。</p>
-<p><em><strong>receive.buffer.bytes 和 send.buffer.bytes</strong></em></p>
-<p>设置<em>socket</em> 在读写数据时用到的 <em>TCP</em> 缓冲区大小。如果它们被设置为 -1，就使用操作系统默认值。如果生产者或消费者与 <em>broker</em> 处于不同的数据中心内，由于跨数据中心的网络一般都有比较高的延迟和比较低的带宽，因此可以适当增大这些值。</p>
-<h1 id="偏移量">偏移量</h1>
-<p>消费者在每次调<em>poll()</em> 方法进行定时轮询的时候，会返回由生产者写入<em>Kafka</em> 但是还没有被消费者消费的记录，因此我们需要追踪哪些记录是被群组里的哪个消费者读取的。</p>
-<p>消费者会向一个叫*_consumer_offset* 的特殊主题中发送消息，这个主题保存每次所发送消息中的分区偏移量，用于消费者触发重平衡后记录偏移使用的。当触发重平衡后，每个消费者可能会分到新的分区，这个主题就是让消费者能够继续处理消息。</p>
-<ol>
-<li>如果提交的偏移量小于客户端最后一次处理的偏移量，那么位于两个偏移量之间的消息就会被重复处理。</li>
-<li>如果提交的偏移量大于最后一次消费时的偏移量，那么处于两个偏移量中间的消息将会丢失</li>
-</ol>
-<h2 id="提交偏移量的方式">提交偏移量的方式</h2>
-<h3 id="自动提交">自动提交</h3>
-<p><em>enable.auto.commit=true</em>时，消费者会自动把从<em>poll()</em> 方法轮询到的最大偏移量提交上去。提交时间间隔由<em>auto.commit.interval.ms</em> 控制，默认是 5s。自动提交是在轮询中进行的，消费者在每次轮询中会检查是否提交该偏移量了，如果是，那么就会提交从上一次轮询中返回的偏移量。</p>
-<h3 id="同步提交">同步提交</h3>
-<p><em>auto.commit.offset=false</em> 时可以自行设置应用程序提交偏移量的时间。使用<em>commitSync()</em> 会提交由<em>poll()</em> 方法返回的最新偏移量，提交成功后马上返回，失败就抛出异常。处理完所有记录后要确保调用了<em>commitSync(</em>)，否则还是会有丢失消息的风险，如果发生了重平衡，从最近一批消息到发生重平衡之间的所有消息都将被重复处理。</p>
-<h3 id="异步提交">异步提交</h3>
-<p>与同步提交<em>commitSync()</em> 最大的区别在于异步提交不会进行重试。</p>
-<h3 id="同步和异步组合提交">同步和异步组合提交</h3>
-<p>一般情况下，提交失败是因为临时问题导致的，后续自动重试提交会成功。但如果在关闭消费者或重平衡前的最后一次提交，就要确保提交成功。因此，在消费者关闭之前一般会组合使用<em>commitAsync</em>和<em>commitSync</em>提交偏移量。</p>
-<h3 id="提交特定的偏移量">提交特定的偏移量</h3>
-<p>消费者API允许调用 <em>commitSync()</em> 和 <em>commitAsync()</em> 方法时传入希望提交的 <em>partition</em> 和 <em>offset</em> 的 <em>map</em>，即提交特定的偏移量。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Kafka入门（二）生产者]]></title>
-        <id>https://yuncheng1998.github.io/post/Vy1JO1w_f/</id>
-        <link href="https://yuncheng1998.github.io/post/Vy1JO1w_f/">
-        </link>
-        <updated>2021-05-14T05:38:32.000Z</updated>
-        <content type="html"><![CDATA[<p><em>ProducerRecord</em>：代表了一组需要发送的消息，它由记录要发送到的主题<em>Topic</em>，可选的分区号<em>Partition</em> 以及可选的键值对构成。</p>
-<p><em>Serializer</em>：在发送<em>ProducerRecord</em> 时，需要将键值对对象由序列化器<em>Serializer</em> 转换为字节数组在网络上传输</p>
-<p><em>Partitioner</em>：如果发送过程中指定了有效的分区号，那么在发送记录时将使用该分区。如果发送过程中未指定分区，则将使用<em>key</em> 的<em>hash</em> 函数映射指定一个分区。如果发送的过程中既没有分区号也没有<em>Key</em>，则将以循环的方式分配一个分区。选好分区后，生产者向其发送数据。这条消息被存放在一个记录批次里，批次里的所有消息会被发送到相同的主题和分区上。由一个独立的线程负责把它们发到<em>Kafka Broker</em> 上。</p>
-<p>响应：<em>Broker</em> 在收到消息时会返回一个响应，如果写入成功，返回一个<em>RecordMetaData</em> 对象，它包含了主题和分区信息，以及记录在分区里的偏移量，上面两种的时间戳类型也会返回给用户。如果写入失败，会返回一个错误。生产者在收到错误之后会尝试重新发送消息，几次之后如果还是失败的话，就返回错误消息。</p>
-<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1620971001611.png" alt="" loading="lazy"></figure>
-<h1 id="producer的创建">Producer的创建</h1>
-<p><em>Producer</em> 有3个必选的属性：<em><strong>bootstrap.servers、key.serializer、value.serializer</strong></em></p>
-<p><em><strong>boostrap.servers</strong></em>：指定<em>broker</em> 的地址，格式为<em>host:port</em> ，<em>producer</em> 根据一个<em>broker</em> 找到其他<em>broker</em> 信息，因此不需要提供全量的<em>broker</em> 地址，但也不要只给定一个（防止<em>broker</em> 宕机）</p>
-<p><em><strong>key.serializer、value.serializer</strong></em>：生产者需要将消息序列化后传递给broker，serializer表示类以何种方式进行序列化，该属性必须设置一个实现了<code>org.apache.kafka.common.serialization.Serializer</code> 接口的类，主要有：<em>ByteArraySerializer、StringSerializer、IntegerSerializer</em> ，其中 ByteArraySerialize 是 Kafka 默认使用的序列化器。</p>
-<pre><code class="language-java">// 创建 Properties 对象
-Properties properties = new Properties(); 
-// 设置bootstrap.servers
-properties.put(&quot;bootstrap.servers&quot;,&quot;broker1:9092,broker2:9092&quot;); 
-// 设置序列化器为StringSerializer
-properties.put(&quot;key.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); properties.put(&quot;value.serializer&quot;,&quot;org.apache.kafka.common.serialization.StringSerializer&quot;); 
-// 创建一个生产者对象，将属性值传递进来
-producer = new KafkaProducer&lt;String,String&gt;(properties);
-</code></pre>
-<h1 id="消息发送">消息发送</h1>
-<h2 id="简单消息发送">简单消息发送</h2>
-<p>消息先被写入分区中的缓冲区中，然后分批次发送给 <em>Kafka Broker</em>。发送成功后，<em>send</em>方法会返回<code>Future(java.util.concurrent)</code> 对象，<em>Future</em> 对象的类型是<em>RecordMetadata</em> 类型。我们上面这段代码没有考虑返回值，所以没有生成对应的<em>Future</em> 对象，所以没有办法知道消息是否发送成功。如果不是很重要的信息或者对结果不会产生影响的信息，可以使用这种方式进行发送。</p>
-<p>我们可以忽略发送消息时可能发生的错误或者在服务器端可能发生的错误，但在消息发送之前，生产者还可能发生其他的异常。这些异常有可能是 <code>SerializationException(序列化失败)</code>，<code>BufferedExhaustedException 或 TimeoutException(说明缓冲区已满)</code>，又或是 <code>InterruptedException</code>(说明发送线程被中断)</p>
-<pre><code class="language-java">String topic = &quot;&quot;;
-String key = &quot;&quot;;
-String value = &quot;&quot;;
-ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-producer.send(record);
-</code></pre>
-<h2 id="同步发送消息">同步发送消息</h2>
-<p>第二种消息发送机制如下所示</p>
-<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-try {
-  RecordMetadata recordMetadata = (RecordMetadata) producer.send(record).get();
-} catch (InterruptedException | ExecutionException e) {
-  e.printStackTrace();
-}
-</code></pre>
-<p>这种发送消息的方式首先调用 <em>send</em> 方法，然后再调用<em>get</em> 方法等待响应。如果服务器返回错误，会抛出异常，如果没有发生错误，会得到 <em>RecordMetadata</em> 对象，可以用它来查看消息记录。</p>
-<p>生产者*（KafkaProducer）*在发送的过程中会出现两类错误：</p>
-<ol>
-<li>重试错误：通过重发消息来解决。比如连接的错误，可以通过再次建立连接来解决。</li>
-<li>无主错误：通过重新为分区选举首领来解决。</li>
-</ol>
-<p><em>KafkaProducer</em> 可以被配置为自动重试，如果多次重试后仍无法解决问题，则会抛出重试异常。有些错误是无法通过重试来解决的，比如消息过大，这类错误不会进行重试，直接抛出异常。</p>
-<h2 id="异步发送消息">异步发送消息</h2>
-<p>为了在异步发送消息的同时能够对异常情况进行处理，生产者提供了回掉支持</p>
-<pre><code class="language-java">ProducerRecord&lt;String,String&gt; record = new ProducerRecord&lt;&gt;(topic, key, value);
-producer.send(record, new ProducerCallBack());
-
-class ProducerCallBack implements Callback {
-    @Override
-    public void onCompletion(RecordMetadata metadata, Exception exception) {
-        if(exception != null){
-          	// handle
-            exception.printStackTrace();;
-        }
-    }
-}
-</code></pre>
-<p>首先实现回调需要定义一个实现了<code>org.apache.kafka.clients.producer.Callback</code>的类，这个接口只有一个<em>onCompletion</em> 方法。如果 <em>Kafka</em> 返回一个错误，<em>onCompletion</em> 方法会抛出一个非空异常，我们可以对其进行处理，然后在<em>send</em> 方法发送的时候传递一个<em>Callback</em> 回调的对象。</p>
-<h1 id="生产者分区机制">生产者分区机制</h1>
-<p><em>Kafka</em> 对于数据的读写粒度是分区，分区分布在多个<em>Broker</em> 中，每个节点能够实现独立的数据写入和读取，并且能通过增加节点来提高集群的吞吐量，通过分区部署在多个<em>Broker</em> 来实现负载均衡的效果。</p>
-<h2 id="分区策略">分区策略</h2>
-<p>分区策略决定生产者发送的消息放到哪个分区。<em>Kafka</em> 提供了默认的分区策略，也支持自定义分区策略。</p>
-<p>如果要自定义分区策略的话，需要显示配置生产者端的参数<em>Partitioner.class</em></p>
-<pre><code class="language-java">public interface Partitioner extends Configurable, Closeable {
-  /**
-   * 计算分区
-   */
-  public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster);
-
-  public void close();
-  
-  default public void onNewBatch(String topic, Cluster cluster, int prevPartition) {}
-}
-</code></pre>
-<p><em>partition</em>方法： <em>topic</em> 表示需要传递的主题；<em>key</em> 表示消息中的键值；<em>keyBytes</em> 表示分区中序列化过后的<em>key</em>，以<em>byte</em> 数组的形式传递；<em>value</em> 表示消息的 <em>value</em> 值；<em>valueBytes</em> 表示分区中序列化后的值数组；<em>cluster</em> 表示当前集群的原数据。可以充分地利用这些信息对消息进行分区，计算出它要被发送到哪个分区中。</p>
-<p><em>close方法</em> : 继承了<em>Closeable</em> 接口，在分区关闭时调用。</p>
-<p><em>onNewBatch方法</em>：表示通知分区程序用来创建新的批次。</p>
-<p>其中与分区策略息息相关的就是 partition() 方法了，分区策略有下面这几种</p>
-<figure data-type="image" tabindex="2"><img src="https://yuncheng1998.github.io/post-images/1620971032795.png" alt="" loading="lazy"></figure>
-<p><strong>顺序轮询</strong>：消息是均匀的分配给每个 partition，即每个分区存储一次消息。顺序轮询策略是 <em>Kafka Producer</em> 提供的默认策略。</p>
-<p><strong>随机轮询</strong>：本质上看随机策略也是力求将数据均匀地打散到各个分区，但从实际表现来看，它要逊于轮询策略，所以如果追求数据的均匀分布，还是使用轮询策略比较好。</p>
-<pre><code class="language-java">// 该主题的所有分区
-List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
-// 然后随机地返回一个小于它的正整数
-return ThreadLocalRandom.current().nextInt(partitions.size());
-</code></pre>
-<p><strong>key-ordering</strong>：按照<em>Key</em> 进行消息保存，保证同一个<em>Key</em> 的所有消息都进入到相同的分区里面，由于每个分区下的消息处理都是有顺序的，故这个策略被称为按消息键保序策略。</p>
-<pre><code class="language-java">List&lt;PartitionInfo&gt; partitions = cluster.partitionsForTopic(topic);
-// 根据Key计算Hash值
-return Math.abs(key.hashCode()) % partitions.size();
-</code></pre>
-<h1 id="kafka-重要参数配置">Kafka 重要参数配置</h1>
-<p><em><strong>key.serializer</strong></em>：用于 key 键的序列化</p>
-<p><em><strong>value.serializer</strong></em>：用于 value 值的序列化</p>
-<p><em><strong>acks</strong></em>：指定了要有多少个分区副本接收消息，生产者才认为消息是写入成功的。</p>
-<ul>
-<li>acks=0：表示生产者不知道自己产生的消息是否被服务器接收了。类似于 UDP 的运输层协议，只管发送，<em>broker</em> 是否接受不关心。</li>
-<li>acks=1：当<em>Leader</em> 接收到消息后会给生产者返回写入成功。如果由于网络异常或者<em>Leader</em> 还没选举出来等导致消息写入失败，生产者会再次重发数据。</li>
-<li>acks=-1：所有参与复制的节点都收到消息时，生产者才会接收到一个来自服务器的消息，由于要等待所有节点确认接收消息，因此延迟比<em>acks=1</em> 高。</li>
-</ul>
-<p><em><strong>buffer.memory</strong></em></p>
-<p>设置生产者内存缓冲区的大小，用于缓冲要发送到<em>broker</em> 的消息。如果应用程序发送消息的速度超过发送到服务器的速度，会导致生产者空间不足。这时<em>send</em> 方法调用要么被阻塞，要么抛出异常，取决于<em>block.on.buffer.null</em> 参数的设置。</p>
-<p><em><strong>compression.type</strong></em></p>
-<p>表示生产者启用何种压缩算法，默认情况下消息不会被压缩。该参数可以设置为<em>snappy</em>、<em>gzip</em> 和<em>lz4</em>，指定消息发送给<em>broker</em> 之前的压缩算法。</p>
-<p><em><strong>retries</strong></em></p>
-<p>生产者从服务器收到的错误有可能是临时性的错误（比如分区找不到<em>Leader</em>），在这种情况下，该参数决定了生产者可以重发的消息次数，超过该次数后才会放弃重试并返回错误。默认情况下，生产者在每次重试之间等待<em>100ms</em>，这个等待参数可以通过 <em>retry.backoff.ms</em> 进行修改。</p>
-<p><em><strong>batch.size</strong></em></p>
-<p>当有多个消息需要被发送到同一个分区时，生产者会把它们放在同一个批次里。该参数指定了一个批次可以使用的内存大小，按照字节数计算。当批次被填满，批次里的所有消息会被发送出去。不过生产者井不一定都会等到批次被填满才发送，任意条数的消息都可能被发送。</p>
-<p><em><strong>client.id</strong></em></p>
-<p>此参数可以是任意的字符串，服务器会用它来识别消息的来源，一般配置在日志里。</p>
-<p><em><strong>max.in.flight.requests.per.connection</strong></em></p>
-<p>指定生产者在收到服务器响应之前可以发送多少消息，值越高吞吐量越大，占用的内存也越多。如果值为1 则保证消息是按照发送的顺序写入服务器。</p>
-<p><em><strong>timeout.ms、request.timeout.ms 和 metadata.fetch.timeout.ms</strong></em></p>
-<p><em>request.timeout.ms</em> 指定生产者在发送数据时等待服务器返回的响应时间</p>
-<p><em>metadata.fetch.timeout.ms</em> 指定了生产者在获取元数据（比如目标分区的<em>Leader</em>）时等待服务器返回响应的时间。</p>
-<p>如果等待时间超时，生产者要么重试发送数据，要么返回一个错误。<em>timeout.m</em>s 指定了<em>broker</em> 等待同步副本返回消息确认的时间，与 <em>asks</em> 的配置相匹配。</p>
-<p><em><strong>max.block.ms</strong></em></p>
-<p>此参数指定了在调用<em>send</em> 方法发送数据或使用<em>partitionFor(</em>) 方法获取元数据时生产者的阻塞时间。当生产者的发送缓冲区已满，或者没有可用的元数据时，这些方法就会阻塞。在阻塞时间达到<em>max.block.ms</em> 时，生产者会抛出超时异常。</p>
-<p><em><strong>max.request.size</strong></em></p>
-<p>用于控制生产者发送的请求大小。<em>Kafka</em> 会首先判断消息大小是否大于<em>maxRequestSize</em>，如果大于则直接抛出异常，不会继续执行追加消息到 batch。并且还会在<em>Sender</em> 线程发送数据到<em>broker</em> 之前，会使用<em>max.request.size</em> 限制发送请求数据的大小。</p>
-<p><em><strong>receive.buffer.bytes 和 send.buffer.bytes</strong></em></p>
-<p><em>Kafka</em> 是基于<em>TCP</em> 实现，为保证可靠的消息传输，这两个参数分别指定了<em>TCP Socket</em> 接收和发送数据包的缓冲区的大小。如果它们被设置为*-1*，就使用操作系统的默认值。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Kafka入门（一）基本概念]]></title>
-        <id>https://yuncheng1998.github.io/post/0ZA_7Pj3E/</id>
-        <link href="https://yuncheng1998.github.io/post/0ZA_7Pj3E/">
-        </link>
-        <updated>2021-05-14T05:35:53.000Z</updated>
-        <content type="html"><![CDATA[<h1 id="什么是mq">什么是MQ</h1>
-<p>消息引擎系统是一组规范。企业利用这组规范在不同系统之间传递语义准确的消息，实现松耦合的异步式数据传递。</p>
-<h1 id="为什么使用mq">为什么使用MQ</h1>
-<p>削峰填谷和松耦合</p>
-<p>削峰填谷指<strong>缓冲上下游瞬时突发流量</strong>，使其更平滑。特别是对于发送能力很强的上游系统，如果没有消息引擎的保护，下游系统可能会直接被压垮导致全链路服务雪崩。通过消息引擎，可以有效地对抗上游的流量冲击，将上游的峰填满到谷中，避免流量震荡。消息引擎系统的另一好处在于<strong>发送方和接收方的松耦合</strong>，减少了系统间不必要的交互。</p>
-<h1 id="kafka术语">Kafka术语</h1>
-<p><strong>消息</strong>：<em>Kafka</em> 中的数据单元，也被称为记录，可以把它看作数据库表中某一行的记录。</p>
-<p><strong>批次 <em>Batch</em></strong>：为提高效率， 消息会<strong>分批次</strong>写入 <em>Kafka</em>，批次就代指的是一组消息。</p>
-<p><strong>主题 <em>Topic</em></strong>：Topic是发布订阅的对象，可以为每个业务、每个应用甚至是每类数据都创建专属的主题。</p>
-<p><strong>分区 <em>Partition</em></strong>：<em>Topic</em> 可以被分为若干个分区 <em>（partition）</em> ，一个分区只属于一个主题。同主题的分区会部署在多个机器上，实现 <em>kafka</em> 的<strong>伸缩性</strong>。单一主题中的分区有序，但是<strong>无法保证主题中所有的分区有序</strong>。</p>
-<p><strong>客户端 <em>Clients</em></strong>：生产者和消费者的统称。可以同时运行多个生产者和消费者实例，这些实例不断地向集群中的多个主题生产和消费消息。</p>
-<p><strong>生产者 <em>Producer</em></strong>：向主题发布消息的客户端应用程序，通常持续不断地向一个或多个主题发送消息。</p>
-<p><strong>消费者 <em>Consumer</em></strong>：订阅这些主题消息的客户端应用程序。和生产者类似，消费者也能够同时订阅多个主题的消息。</p>
-<p><strong>消费者群组 <em>Consumer Group</em></strong>：由一个或多个消费者组成的群体。</p>
-<p><strong>偏移量 <em>Consumer Offset</em></strong> ：是一种元数据，一个不断递增的整数值，用来记录消费者发生重平衡时的位置，以便用来恢复数据。</p>
-<p><strong>服务端 <em>Broker</em></strong>：<em>Kafka</em>的服务器端，负责接收和处理客户端发送过来的请求，以及对消息进行持久化。常见的做法是将不同的<em>Broker</em> 分散运行在不同的机器上，如果某台机器宕机，上面运行的所有<em>Broker</em> 进程都挂掉了，其他机器上的<em>Broker</em> 也依然能够对外提供服务。这是<em>Kafka</em>提供高可用的手段之一。</p>
-<p><strong>集群 <em>cluster</em></strong>：由一个或多个 <em>Broker</em> 组成，每个集群都有一个 <em>Broker</em> 同时充当了集群控制器的角色（自动从集群中选举出来）。</p>
-<p><strong>副本 <em>Replica</em></strong>：消息的备份叫做副本，副本的数量是可以配置的，<em>Kafka</em> 定义两类副本：领导者副本*（Leader Replica）<em>和追随者副本</em>（Follower Replica）*，前者对外提供服务，后者被动跟随。</p>
-<p><strong>重平衡 <em>Rebalance</em></strong>：消费者组内某个消费者实例挂掉后，其他消费者实例自动重新分配订阅主题分区的过程。是消费者端实现高可用的重要手段。</p>
-<h1 id="kafka的特性">Kafka的特性</h1>
-<ol>
-<li>高吞吐、低延迟：收发消息非常快，每秒可以处理几十万条消息，最低延迟只有几毫秒。</li>
-<li>高伸缩性：每个主题包含多个分区，主题中的分区可以分布在不同的主机中。</li>
-<li>持久性、可靠性：允许数据的持久化存储到磁盘，并支持数据备份防止数据丢失。</li>
-<li>容错性：允许集群中的节点宕机，集群仍能够正常工作。</li>
-<li>高并发：支持数千个客户端同时读写。</li>
-</ol>
-<h1 id="kafka-的使用场景">Kafka 的使用场景</h1>
-<p>活动跟踪：Kafka 可以用来跟踪用户行为，比如我们经常回去淘宝购物，你打开淘宝的那一刻，你的登陆信息，登陆次数都会作为消息传输到 Kafka ，当你浏览购物的时候，你的浏览信息，你的搜索指数，你的购物爱好都会作为一个个消息传递给 Kafka ，这样就可以生成报告，可以做智能推荐，购买喜好等。</p>
-<p>传递消息：Kafka 另外一个基本用途是传递消息，应用程序向用户发送通知就是通过传递消息来实现的，这些应用组件可以生成消息，而不需要关心消息的格式，也不需要关心消息是如何发送的。</p>
-<p>度量指标：Kafka也经常用来记录运营监控数据。包括收集各种分布式应用的数据，生产各种操作的集中反馈，比如报警和报告。</p>
-<p>日志记录：Kafka 的基本概念来源于提交日志，比如我们可以把数据库的更新发送到 Kafka 上，用来记录数据库的更新时间，通过kafka以统一接口服务的方式开放给各种consumer，例如hadoop、Hbase、Solr等。</p>
-<p>流式处理：流式处理是有一个能够提供多种应用程序的领域。</p>
-<p>限流削峰：Kafka 多用于互联网领域某一时刻请求特别多的情况下，可以把请求写入Kafka 中，避免直接请求后端程序导致服务崩溃。</p>
-<h1 id="kafka-的消息队列">Kafka 的消息队列</h1>
-<p>点对点模式：一个生产者对应一个消费者<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970642605.png" alt="" loading="lazy"></p>
-<p>发布订阅模式：一个/多个生产者对应多个消费者<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970659080.png" alt="" loading="lazy"></p>
-<h1 id="kafka-系统架构">Kafka 系统架构</h1>
-<p>一个典型的 Kafka 集群中包含若干Producer，若干broker，若干Consumer Group，以及一个Zookeeper集群。Kafka通过Zookeeper管理集群配置，选举leader，以及在Consumer Group发生变化时进行rebalance。Producer使用push模式将消息发布到broker，Consumer使用pull模式从broker订阅并消费消息。<br>
-<img src="https://yuncheng1998.github.io/post-images/1620970691187.png" alt="" loading="lazy"></p>
-<h1 id="核心-api">核心 API</h1>
-<p>有四个核心API：</p>
-<p>Producer API：支持应用程序向一个或多个主题上发送消息记录。</p>
-<p>Consumer API：支持应用程序订阅一个或多个主题并处理生成的记录流。</p>
-<p>Streams API：支持应用程序作为流处理器，从一个或多个主题中消费输入流并为其生成输出流，有效的将输入流转换为输出流。</p>
-<p>Connector API，将<em>Kafka</em> 主题连接到生产者和消费者。</p>
 ]]></content>
     </entry>
     <entry>
@@ -1867,6 +1577,658 @@ return Math.abs(key.hashCode()) % partitions.size();
 <p>如果一个数组中有超过一半的数，那么将任意两个不相等的数相互抵消，最后剩下的数必然是超过一半的数。这个算法前提是必须保证存在这种数，如果不能保证，仍然需要排序后找出中间的数，然后与第一个数和最后一个数比较。如果n为奇数，那么需要保证<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">n/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span></span></span></span>，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>0</mn></mrow><annotation encoding="application/x-tex">0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span>，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">n-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.66666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span>三个位置上的数有两个相等。如果n为偶数，那么需要保证<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn></mrow><annotation encoding="application/x-tex">n/2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span></span></span></span>和<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>0</mn></mrow><annotation encoding="application/x-tex">0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span>相等或<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mi mathvariant="normal">/</mi><mn>2</mn><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">n/2-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">n</span><span class="mord">/</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span>与<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">n</span></span></span></span>相等。</p>
 <h3 id="不连续的整数中找出最大间隔">不连续的整数中找出最大间隔</h3>
 <p>若给出的数不多，可以使用计数排序，即使用下标进行计数。用每个数减去最小的数，然后使用bitmap来储存，然后根据0连续出现的次数来确定。如果数的间隔较大，那么可以使用桶排序，例如共有15个数，最小的数为0，最大数为10w，那么可以分成10个桶，分别存储0-1w，1-2w，...。现根据空桶进行查找，如都集中在某个桶那么就再次分桶计数，直到找出间隔最大的。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[算法周记（第K个最大元素、最长连续序列、螺旋矩阵、股票买卖、合并有序数组、被围绕的区域、分割回文串）]]></title>
+        <id>https://yuncheng1998.github.io/post/DX1hNN3hk/</id>
+        <link href="https://yuncheng1998.github.io/post/DX1hNN3hk/">
+        </link>
+        <updated>2021-04-11T15:24:52.000Z</updated>
+        <content type="html"><![CDATA[<h3 id="数组中第k个最大的元素">数组中第k个最大的元素</h3>
+<p>找数组中第k大的元素</p>
+<pre><code class="language-java">class Solution {
+
+    /**
+     * 将其由小到大排序，选定一个位置作为分割
+     * 找第k大的数
+     * @param nums
+     * @param k
+     * @return
+     */
+    public int findKthLargest(int[] nums, int k) {
+        // 首先使用倒数k作为分割点进行查找
+        return findK(nums, 0, nums.length -1, nums.length - k);
+    }
+
+    /**
+     *
+     * @param nums 数组
+     * @param start 开始
+     * @param end 结束
+     * @param k 第k大
+     * @return
+     */
+    public int findK(int[] nums, int start, int end, int k) {
+        if (start == end) {
+            return nums[start];
+        }
+        int pivot = nums[(start + end)/2];
+        int i = start;
+        int j = end;
+        while (i &lt;= j) {
+            while (nums[i] &lt; pivot) {
+                i++;
+            }
+            while (nums[j] &gt; pivot) {
+                j--;
+            }
+            if (i &lt;= j) {
+                int temp = nums[i];
+                nums[i] = nums[j];
+                nums[j] = temp;
+                i++;
+                j--;
+            }
+        }
+        // 判断k在选定点前面还是后面，对选定的部分进行排序
+        if (k &gt;= (i-start)) {
+            return findK(nums, i, end, k-i+start);
+        } else {
+            return findK(nums, start, i-1, k);
+        }
+    }
+}
+</code></pre>
+<h3 id="最长连续序列">最长连续序列</h3>
+<pre><code class="language-java">class Solution {
+    /**
+     * 最长连续序列，注意最长连续序列中的任意一个数
+     * @param nums
+     * @return
+     */
+    public int longestConsecutive(int[] nums) {
+        // 记录该字符所在的最长子序列的序列长度
+        HashMap&lt;Integer, Integer&gt; map = new HashMap&lt;&gt;();
+        // 最长子序列长度
+        int res = 0;
+        for (int t : nums) {
+            // 如果map中包含说明已经计算过
+            if (map.containsKey(t)) {
+                continue;
+            }
+            // 获取t-1所在的最长连续序列的长度
+            int left = map.getOrDefault(t - 1, 0);
+            // 获取t+1所在的最长连续序列的长度
+            int right = map.getOrDefault(t + 1, 0);
+            // 最终长度
+            int count = left + right + 1;
+            // 更新t、t-1、t+1的值
+            map.put(t, count);
+            if (left &gt; 0) {
+                map.put(t - left, count);
+            }
+            if (right &gt; 0) {
+                map.put(t + right, count);
+            }
+            // 更新最长长度
+            res = Math.max(res, count);
+        }
+        return res;
+    }
+}
+</code></pre>
+<h3 id="螺旋矩阵">螺旋矩阵</h3>
+<pre><code class="language-java">/**
+ * 顺时针螺旋顺序
+ */
+class Solution {
+    public List&lt;Integer&gt; spiralOrder(int[][] matrix) {
+        List&lt;Integer&gt; ans = new ArrayList&lt;&gt;();
+        if (matrix.length == 0) {
+            return ans;
+        }
+
+        int startR = 0, endR = matrix.length - 1;
+        int startC = 0, endC = matrix[0].length - 1;
+
+        while (startR &lt;= endR &amp;&amp; startC &lt;= endC) {
+            // 上面一行遍历
+            for (int c = startC; c &lt;= endC; c++) {
+                ans.add(matrix[startR][c]);
+            }
+            // 右边一列遍历，起始位置应该start+1
+            for (int r = startR + 1; r &lt;= endR; r++) {
+                ans.add(matrix[r][endC]);
+            }
+            // 倒序遍历
+            if (startR &lt; endR &amp;&amp; startC &lt; endC) {
+                // 下面一行遍历:从倒数第二个到第一个
+                for (int c = endC - 1; c &gt; startC; c--) {
+                    ans.add(matrix[endR][c]);
+                }
+                // 左边一行遍历:从倒数第二个到正数第二个
+                for (int r = endR; r &gt; startR; r--) {
+                    ans.add(matrix[r][startC]);
+                }
+            }
+            // 矩阵内缩
+            startR++;
+            endR--;
+            startC++;
+            endC--;
+        }
+        return ans;
+    }
+}
+</code></pre>
+<h3 id="螺旋矩阵ii">螺旋矩阵II</h3>
+<pre><code class="language-java">class Solution {
+    public int[][] generateMatrix(int n) {
+        int[][] res = new int[n][n];
+        int startC = 0, endC = n - 1;
+        int startR = 0, endR = n - 1;
+        int i = 1;
+        while (startC &lt;= endC &amp;&amp; startR &lt;= endR) {
+            for (int c = startC; c &lt;= endC; c++) {
+                res[startR][c] = i++;
+            }
+            for (int r = startR + 1; r &lt;= endR; r++) {
+                res[r][endC] = i++;
+            }
+            if (startC &lt; endC &amp;&amp; startR &lt; endR) {
+                for (int c = endC - 1; c &gt; startC; c--) {
+                    res[endR][c] = i++;
+                }
+                for (int r = endR; r &gt; startR; r--) {
+                    res[r][startC] = i++;
+                }
+            }
+            startC++;
+            startR++;
+            endC--;
+            endR--;
+        }
+        return res;
+    }
+}
+</code></pre>
+<h3 id="买卖股票的最佳时机ii">买卖股票的最佳时机II</h3>
+<pre><code class="language-java">class Solution {
+    public int maxProfit(int[] prices) {
+        if (prices.length &lt; 2) {
+            return 0;
+        }
+        int max = prices[prices.length - 1];
+        int min = max;
+        int res = 0;
+        for (int i = prices.length - 1; i &gt;= 0; i--) {
+            if (prices[i] &gt;= max) {
+                res = res + max - min;
+                max = prices[i];
+                min = max;
+            } else if (prices[i] &lt;= min) {
+                min = prices[i];
+            } else {
+                res = res + max - min;
+                max = prices[i];
+                min = max;
+            }
+        }
+        res = res + max - min;
+        return res;
+    }
+}
+</code></pre>
+<h3 id="合并两个有序数组">合并两个有序数组</h3>
+<p>给出两个有序数组，将B数组合并进A数组<br>
+方法：倒序插入<br>
+获得合并后的尾指针和两个数组的尾指针，逐渐向内移动尾指针，比较两个数组中的值，决定将哪一个赋值给对应的位置</p>
+<pre><code class="language-java">class Solution {
+    public void merge(int[] nums1, int m, int[] nums2, int n) {
+        int i = m + n - 1, j = m - 1, k = n - 1;
+        while (j &gt;= 0 &amp;&amp; k &gt;= 0) {
+            nums1[i--] = (nums1[j] &gt; nums2[k]) ? nums1[j--] : nums2[k--];
+        }
+        while (k &gt;= 0) {
+            nums1[i--] = nums2[k--];
+        }
+    }
+}
+</code></pre>
+<h3 id="被围绕的区域">被围绕的区域</h3>
+<ul>
+<li>DFS</li>
+</ul>
+<pre><code class="language-java">class Solution {
+    public void solve(char[][] board) {
+        if(board == null || board.length == 0) return;
+        int m = board.length;
+        int n = board[0].length;
+        // 对于在边界出现的O进行DFS
+        for (int i = 0; i &lt; m; i++) {
+            for (int j = 0; j &lt; n; j++) {
+                boolean isEdge = (i == 0 || j == 0 || i == m - 1 || j == n - 1);
+                if (isEdge &amp;&amp; board[i][j] == 'O') {
+                    dfs(board, i, j);
+                }
+            }
+        }
+        // DFS后，无法替换的O已经被置换成#，这里将其置换回来
+        for (int i = 0; i &lt; m; i++) {
+            for (int j = 0; j &lt; n; j++) {
+                if (board[i][j] == 'O') {
+                    board[i][j] = 'X';
+                }
+                if (board[i][j] == '#') {
+                    board[i][j] = 'O';
+                }
+            }
+        }
+    }
+
+    /**
+     * 深度优先遍历递归
+     * @param board
+     * @param i
+     * @param j
+     */
+    public void dfs(char[][] board, int i, int j) {
+        // 对非边界的O进行查找，替换为#
+        if (i &lt; 0 || j &lt; 0 || i &gt;= board.length || j &gt;= board[0].length || board[i][j] == 'X' || board[i][j] == '#') {
+            return;
+        }
+        board[i][j] = '#';
+        dfs(board, i - 1, j);
+        dfs(board, i + 1, j);
+        dfs(board, i, j - 1);
+        dfs(board, i, j + 1);
+    }
+
+}
+</code></pre>
+<h3 id="分割回文串">分割回文串</h3>
+<pre><code class="language-java">class Solution {
+    private String s;
+    private List&lt;List&lt;String&gt;&gt; result = new ArrayList&lt;&gt;();
+
+    /**
+     * 验证s[i,j]子串是否是回文
+     * @param i i
+     * @param j j
+     * @return a[i,j]是否为回文
+     */
+    private boolean validate(int i, int j){
+        while(i &lt; j){
+            if(s.charAt(i) != s.charAt(j)) {
+                return false;
+            }
+            i++;
+            j--;
+        }
+        return true;
+    }
+
+    /**
+     *
+     * @param s 字符串
+     * @param list  将分割的字符串存储在 list中
+     * @param index index，在字符串中的下标
+     */
+    private void f(String s, List&lt;String&gt; list, int index){
+        // 当下标移动至结尾时，就可以将其添加到result中
+        if(index &gt;= s.length()){
+            result.add(new ArrayList&lt;&gt;(list));
+            return;
+        }
+        // 从index开始判断s[index, i]子串是否是回文串
+        for(int i = index; i &lt; s.length(); i++){
+            // 如果是回文串，放入list中，然后对
+            if(validate(index, i)){
+                list.add(s.substring(index, i + 1));
+                f(s, list, i + 1);
+                list.remove(list.size() - 1);
+            }
+        }
+    }
+
+    public List&lt;List&lt;String&gt;&gt; partition(String s) {
+        if(s.equals(&quot;&quot;)||s.length()==0) {
+            return result;
+        }
+        this.s=s;
+        f(s, new ArrayList&lt;&gt;(), 0);
+        return result;
+    }
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[算法周记（两数之和、整数反转、最接近的三数之和、盛水最多的容器、全排列、最长公共前缀、爬楼梯）]]></title>
+        <id>https://yuncheng1998.github.io/post/ffJJJTXS7/</id>
+        <link href="https://yuncheng1998.github.io/post/ffJJJTXS7/">
+        </link>
+        <updated>2021-04-11T15:18:25.000Z</updated>
+        <content type="html"><![CDATA[<h3 id="两数之和">两数之和</h3>
+<p>对于链表问题，有时候可以自己设置一个head节点，然后在返回时返回head.next，虽然在程序中多出了一个节点，但可以很好的简化程序的逻辑。另外对于相加问题，要考虑好最后一位的进位问题。</p>
+<pre><code class="language-java">class Solution {
+    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {
+        int carry = 0;
+        int sum = 0;
+        ListNode head = new ListNode(0);
+        ListNode p = head;
+        int val1, val2;
+        while (l1 != null || l2 != null) {
+            if (l1 == null) {
+                val1 = 0;
+            } else {
+                val1 = l1.val;
+                l1 = l1.next;
+            }
+            if (l2 == null) {
+                val2 = 0;
+            } else {
+                val2 = l2.val;
+                l2 = l2.next;
+            }
+            sum = val1 + val2 + carry;
+            carry = sum/10;
+            p.next = new ListNode(sum%10);
+            p = p.next;
+        }
+        if (carry &gt; 0) {
+            p.next = new ListNode(carry);
+        }
+        return head.next;
+    }
+}
+</code></pre>
+<h3 id="整数反转">整数反转</h3>
+<p>注意对边界条件的判断，本题要求的是超过表示范围后返回0，对边界的判断应该在计算出结果之前来检验。对于本题目中计算s的表达式 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>=</mo><mi>s</mi><mo>∗</mo><mn>10</mn><mo>+</mo><mi>p</mi><mi>o</mi><mi>p</mi></mrow><annotation encoding="application/x-tex">s=s* 10 + pop</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.46528em;vertical-align:0em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">0</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span><span class="mord mathdefault">o</span><span class="mord mathdefault">p</span></span></span></span> ，如果计算后的结果满足<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>&gt;</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi></mrow></msub></mrow><annotation encoding="application/x-tex">s&gt;value_{max}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&gt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">x</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，那么计算前需要满足下面两个条件之一<br>
+<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>10</mn><mo>∗</mo><mi>s</mi><mo>&gt;</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi></mrow></msub></mrow><annotation encoding="application/x-tex">10*s&gt;value_{max}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">0</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&gt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">x</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span><br>
+<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>=</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi></mrow></msub><mi mathvariant="normal">/</mi><mn>10</mn><mo separator="true">,</mo><mi>p</mi><mi>o</mi><mi>p</mi><mo>&gt;</mo><mn>7</mn></mrow><annotation encoding="application/x-tex">s=value_{max}/10, pop&gt;7</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">x</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord">1</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">p</span><span class="mord mathdefault">o</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&gt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">7</span></span></span></span><br>
+同理要满足<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>&lt;</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>i</mi><mi>n</mi></mrow></msub></mrow><annotation encoding="application/x-tex">s&lt;value_{min}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">n</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，满计算前需要满足下面两个条件之一<br>
+<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>10</mn><mo>∗</mo><mi>s</mi><mo>&lt;</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>i</mi><mi>n</mi></mrow></msub></mrow><annotation encoding="application/x-tex">10*s&lt;value_{min}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">0</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">n</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span><br>
+<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>=</mo><mi>v</mi><mi>a</mi><mi>l</mi><mi>u</mi><msub><mi>e</mi><mrow><mi>m</mi><mi>i</mi><mi>n</mi></mrow></msub><mi mathvariant="normal">/</mi><mn>10</mn><mo separator="true">,</mo><mi>p</mi><mi>o</mi><mi>p</mi><mo>&lt;</mo><mo>−</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">s=value_{min}/10, pop&lt;-8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mord mathdefault">a</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">u</span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">n</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord">1</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">p</span><span class="mord mathdefault">o</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">−</span><span class="mord">8</span></span></span></span></p>
+<pre><code class="language-java">class Solution {
+    public int reverse(int x) {
+        int s = 0;
+        int pop = 0;
+        while (x != 0) {
+            pop = x%10;
+            x = x/10;
+            if (s &gt; Integer.MAX_VALUE/10 || (s == Integer.MAX_VALUE/10 &amp;&amp; pop &gt; 7)) {
+                return 0;
+            }
+            if (s &lt; Integer.MIN_VALUE/10 || (s == Integer.MIN_VALUE/10 &amp;&amp; pop &lt; -8)) {
+                return 0;
+            }
+            s = s*10 + pop;
+        }
+        return s;
+    }
+}
+</code></pre>
+<h3 id="最接近的三数之和">最接近的三数之和</h3>
+<p>本题目与三数之和解法近似，使用双指针法，先将数组排序，然后每次选定一个数为基准，头尾指针向内移动比较与目标值的接近度。如果大于目标值，则移动尾指针，否则移动头指针。</p>
+<pre><code class="language-java">public int threeSumClosest(int[] nums, int target) {
+        if (nums.length &lt; 3) {
+            return 0;
+        }
+        Arrays.sort(nums);
+        int temp = nums[0] + nums[1] + nums[2];
+        for (int i = 0; i &lt; nums.length - 2; i++) {
+            int difference = target - nums[i];
+            int start = i + 1, end = nums.length - 1;
+            while (start &lt; end) {
+                // 如果num[i] + num[start] + num[end] 更接近target 更新temp
+                if (Math.abs(target - temp) &gt; Math.abs(difference - nums[start] - nums[end])) {
+                    temp = nums[i] + nums[start] + nums[end];
+                }
+                // 大于则end--，小于则start++
+                if (nums[start] + nums[end] &gt; difference) {
+                    end--;
+                } else {
+                    start++;
+                }
+            }
+
+        }
+        return temp;
+    }
+</code></pre>
+<h3 id="盛水最多的容器">盛水最多的容器</h3>
+<figure data-type="image" tabindex="1"><img src="https://yuncheng1998.github.io/post-images/1618154398481.png" alt="盛水最多的容器" loading="lazy"></figure>
+<p>如下图所示，容量的计算公式如下所示<br>
+<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>c</mi><mi>a</mi><mi>p</mi><mi>a</mi><mi>c</mi><mi>i</mi><mi>t</mi><mi>y</mi><mo>=</mo><mi>m</mi><mi>i</mi><mi>n</mi><mo>(</mo><mi>n</mi><mi>u</mi><mi>m</mi><mo>[</mo><mi>i</mi><mo>]</mo><mo separator="true">,</mo><mi>n</mi><mi>u</mi><mi>m</mi><mo>[</mo><mi>j</mi><mo>]</mo><mo>)</mo><mo>∗</mo><mo>(</mo><mi>j</mi><mo>−</mo><mi>i</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">capacity=min(num[i], num[j])*(j-i)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.85396em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">c</span><span class="mord mathdefault">a</span><span class="mord mathdefault">p</span><span class="mord mathdefault">a</span><span class="mord mathdefault">c</span><span class="mord mathdefault">i</span><span class="mord mathdefault">t</span><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">m</span><span class="mord mathdefault">i</span><span class="mord mathdefault">n</span><span class="mopen">(</span><span class="mord mathdefault">n</span><span class="mord mathdefault">u</span><span class="mord mathdefault">m</span><span class="mopen">[</span><span class="mord mathdefault">i</span><span class="mclose">]</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">n</span><span class="mord mathdefault">u</span><span class="mord mathdefault">m</span><span class="mopen">[</span><span class="mord mathdefault" style="margin-right:0.05724em;">j</span><span class="mclose">]</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.05724em;">j</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">i</span><span class="mclose">)</span></span></span></span><br>
+也可以使用双指针来进行求解，头尾指针向内移动，由于容量由最短的柱子决定，因此先移动较短的柱子，每次重新计算容量，判断是否要更新最大值</p>
+<pre><code class="language-java">class Solution {
+    public int maxArea(int[] height) {
+        int capacity = 0;
+        int left = 0;
+        int right = height.length - 1;
+        while (left &lt; right) {
+            int temp = Math.min(height[left], height[right]) * (right - left);
+            capacity = Math.max(temp, capacity);
+            // 如果右边的比左边的矮，让右边向内移动
+            if (height[left] &gt; height[right]) {
+                right--;
+            } else {
+                left++;
+            }
+        }
+        return capacity;
+    }
+}
+</code></pre>
+<h3 id="全排列">全排列</h3>
+<p>全排列算法是回溯法的应用，全排列计算时本质是俩俩数的交换。将整个全排列树画出后如下图所示（来源 leetCode）<br>
+<img src="https://yuncheng1998.github.io/post-images/1618154427131.png" alt="全排列树" loading="lazy"><br>
+可以看出第一层是将第一个位置与后面位置上的数依次交换后得到的结果，第二次是第二个数与后面位置上的数依次交换后得到的结果，第三层是第三个数与后面数依次交换的结果，知道要交换的数的位置等于数组的长度，停止交换得到的所有数组就是全排列。<br>
+如果使用回溯法，首先由<code>swap(0,0), swap(1,1), swap(2,2)</code><br>
+求得[1,2,3]后下一次递归的层数为3，和len相等，因此收入最终结果。<br>
+回溯需要还原之前的交换来得到原来的排列，前面的回溯为<code>swap(2,2), swap(1,1)</code>还原到层数后继续下一步应进行的是<code>swap(1,2)</code>，这样依次递归将所有的全排列得到。</p>
+<pre><code class="language-java">class Solution {
+    public List&lt;List&lt;Integer&gt;&gt; permute(int[] nums) {
+        List&lt;List&lt;Integer&gt;&gt; result = new LinkedList&lt;&gt;();
+        List&lt;Integer&gt; list = new LinkedList&lt;&gt;();
+        for (int i : nums) {
+            list.add(i);
+        }
+        int len = nums.length;
+        backtrack(len, list, result, 0);
+        return result;
+    }
+
+    private void backtrack(int len, List&lt;Integer&gt; list, List&lt;List&lt;Integer&gt;&gt; result, int first) {
+        if (len == first) {
+            result.add(new ArrayList&lt;&gt;(list));
+        }
+        for (int i = first; i &lt; len; i++) {
+            Collections.swap(list, first, i);
+            backtrack(len, list, result, first + 1);
+            Collections.swap(list, first, i);
+        }
+    }
+}
+</code></pre>
+<h3 id="最长公共前缀">最长公共前缀</h3>
+<p>给定一组字符串，求这组字符串最长公共子前缀。</p>
+<blockquote>
+<p>输入: [&quot;flower&quot;,&quot;flow&quot;,&quot;flight&quot;]<br>
+输出: &quot;fl&quot;</p>
+</blockquote>
+<p>首先需要理解前缀的含义，即 <em>prefix</em> 在 <em>str</em> 中第一次出现的索引为0，即以 <code>str.index(prefix) == 0</code> 为判断条件。如果不为0，则去掉 <em>prefix</em> 的最后一位字母继续比较。另外一个要点时，先用strs[0]作为prefix，然后做减量，这个思想在本题中使用很重要。</p>
+<pre><code class="language-java">class Solution {
+    public String longestCommonPrefix(String[] strs) {
+        if (strs.length == 0) {
+            return &quot;&quot;;
+        }
+        String prefix = strs[0];
+        if (strs.length == 1) {
+            return prefix;
+        }
+        // 以strs[0]作为前缀，然后查看其他的字符串中是否包含该字符串
+
+        for (int i = 1; i &lt; strs.length; i++) {
+            // 该字符串中第一次出现前缀的索引，如果为0，则说明是前缀
+            while (strs[i].indexOf(prefix) != 0) {
+                prefix = prefix.substring(0, prefix.length() - 1);
+                if (prefix.isEmpty()) {
+                    return &quot;&quot;;
+                }
+            }
+        }
+        return prefix;
+    }
+}
+</code></pre>
+<h3 id="爬楼梯">爬楼梯</h3>
+<p>可以一步上1个或2个台阶，一共有N个台阶，问有几种走法。显而易见，1级台阶1种，2级台阶两种，3级台阶最后一步可以是走了2级或1级，那么就是1级台阶的走法+2级台阶的走法。同理4级台阶是3级台阶的走法+2级台阶的走法...，很容易想到使用递归的方法解决问题</p>
+<pre><code class="language-java">public int climbStairs(int n) {
+    if (n == 1) {
+        return 1;
+    }
+    if (n == 2) {
+        return 2;
+    }
+    return climbStairs(n - 1) + climbStairs(n - 2);
+}
+</code></pre>
+<p>但是这样会做了很多的重复计算，如下图所示<br>
+<img src="https://yuncheng1998.github.io/post-images/1618154453666.png" alt="递归树" loading="lazy"><br>
+因此最好使用备忘录将每个节点的方法数记录下来，可以申请一个数组dp[]，该数组的填充计算方法为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>d</mi><mi>p</mi><mo>[</mo><mi>n</mi><mo>]</mo><mo>=</mo><mi>d</mi><mi>p</mi><mo>[</mo><mi>n</mi><mo>−</mo><mn>1</mn><mo>]</mo><mo>+</mo><mi>d</mi><mi>p</mi><mo>[</mo><mi>n</mi><mo>−</mo><mn>2</mn><mo>]</mo></mrow><annotation encoding="application/x-tex">dp[n] = dp[n-1]+dp[n-2]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">d</span><span class="mord mathdefault">p</span><span class="mopen">[</span><span class="mord mathdefault">n</span><span class="mclose">]</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">d</span><span class="mord mathdefault">p</span><span class="mopen">[</span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">1</span><span class="mclose">]</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">d</span><span class="mord mathdefault">p</span><span class="mopen">[</span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">2</span><span class="mclose">]</span></span></span></span></p>
+<pre><code class="language-java">class Solution {
+    public int climbStairs(int n) {
+        if (n == 1) {
+            return 1;
+        }
+	
+        int[] dp = new int[n+1];
+        dp[1] = 1;
+        dp[2] = 2;
+        for (int i = 3; i &lt;= n; i++) {
+            dp[i] = dp[i-1] + dp[i-2];
+        }
+        return dp[n];
+    }
+}
+</code></pre>
+<p>经过观察可以发现，每次只会使用第n个台阶的前两级的方法数来计算，因此只需申请两个变量即可。每次迭代，step变为a和b的和，同时更新a和b</p>
+<pre><code class="language-java">class Solution {
+    public int climbStairs(int n) {
+        if (n &lt; 0) {
+            return 0;
+        }
+        if (n == 1) {
+            return 1;
+        }
+        if (n == 2) {
+            return 2;
+        }
+        int a = 1;
+        int b = 2;
+        int step = 0;
+        // 每一次迭代，step为对应台阶数的步数方法，同时更新a和b
+        for (int i = 3; i &lt;= n; i++) {
+            step = a + b;
+            a = b;
+            b = step;
+        }
+        return step;
+    }
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[代码整洁之道]]></title>
+        <id>https://yuncheng1998.github.io/post/clean-code/</id>
+        <link href="https://yuncheng1998.github.io/post/clean-code/">
+        </link>
+        <updated>2021-04-11T14:29:15.000Z</updated>
+        <content type="html"><![CDATA[<p>在一家公司实习，接手了一个权限相关的模块，正处一个新版本上线的时机，这个模块也是从其他模块中拆分出来的，上一任从老代码搬运过来并进行重构，后又由我接手来继续接受重构并进行新权限功能的开发。在重构期间开始读 <em>Robert C. Martin</em> 所著的 <em>代码整洁之道</em> 。在此期间对我起到了很大的指导作用。</p>
+<h2 id="方法应该是什么样的">方法应该是什么样的</h2>
+<h3 id="短小只做一件事">短小，只做一件事</h3>
+<p>方法之所以写的冗长因为它做了太多的事情，一个好的方法应该短小清晰，过于长的代码是难以理解和维护的，因此应尽可能的将长方法进行拆分，首先要理解原方法的含义，然后将它所做的任务拆分成若干子任务，每个子任务进行以面向对象的思想进行封装。并且要规范的命名和写清楚 <em>javadoc</em> 注释。</p>
+<h3 id="抽象层级">抽象层级</h3>
+<p>这是一个容易被忽视的事情，并不是所有方法都在同一层级上。将方法按抽象层级进行区分并注意调用的位置，适合自顶向下的读代码习惯。</p>
+<p>例如要从文件中获得字符串的List，现有一个读取文件的方法 <em>readFile</em> 和一个将字符串转换为字符数组 <em>convertString2List</em> 的方法。</p>
+<ol>
+<li>两个方法都在 <em>main</em> 中调用</li>
+<li><em>main</em> 中调用 <em>readFile</em>，<em>readFile</em> 中调用 <em>convertString2List</em></li>
+</ol>
+<h3 id="不要返回-null">不要返回 <em>null</em></h3>
+<p>低层级的方法尽量避免返回值为 <em>null</em> 的情况发生，来避免高层级代码需要进行的判空处理。应该及时在低层级代码判断null，如果为错误时抛出异常，或者返回空对象</p>
+<h3 id="参数">参数</h3>
+<p>对于诸如 <em>completeArg</em> 方法，使用 <em>Arg completeArg(Arg arg)</em> 通常要优于使用 <em>void completeArg(Arg arg)</em></p>
+<p>对于参数中有 <em>Boolean</em> 类型的方法，若其在做两件不同的事情，应该将其拆分</p>
+<p>对于有很多参数的方法，例如 <em>String generateSql(String tableName, String idName, String eiName, String authCondition, String ei)</em> 这样一个生成 <em>SQL</em> 语句的方法，前三个参数作为列名，完全可以用一个单独的类进行封装。若只在本类中调用，可以将其设置为私有类。然后使用对象作为参数<em>String generateSql(SqlArg sqlArg, String authCondition, String ei)</em></p>
+<h3 id="无副作用">无副作用</h3>
+<p>有些方法具有副作用在于当该方法被调用后，有一些调用者未预见的事情发生了。这主要是是由于命名不规范和违反了只做一件事原则而产生的</p>
+<h3 id="不要有输出参数">不要有输出参数</h3>
+<p>输出参数是面向过程所遗留下的产物，例如上面所提到的 <em>void completeArg(Arg arg)</em>，这类方法应该被改造为 <em>arg.completeArg()</em>，参数多数自然而染得被看作是输入，输入又输出的参数会给人造成迷惑</p>
+<h3 id="分隔指令与询问">分隔指令与询问</h3>
+<p>例如 <em>Java</em> 中的 <em>Set</em> 的 <em>add</em> 方法，会返回一个 <em>boolean</em> 类型表示插入是否成功，<em>contains</em> 用来判断集合中是否包含这个值。<em>add</em> 是指令、<em>contains</em> 是询问，应避免使用 <em>add</em> 来替代 <em>contains</em>。当然对于多线程应另行考虑。</p>
+<h3 id="异常">异常</h3>
+<p>除了模块提供的对外 <em>API</em> ，内部的方法应使用异常而不是错误码。调用的方法并判断返回值是错误码，这本身就违反了分隔指令与询问的原则。当使用 <em>try-catch</em> 去处理异常时，try代码块与catch代码块中分别做了两件不同的事，完全可以将其抽离出作为两个方法。另外对于 <em>try</em> 中有多行代码是容易给人造成混乱的，因为这样不知道异常是由哪些语句抛出的。良好的错误处理的<em>try-catch</em>语句必然是干净整洁的。</p>
+<h3 id="结构化编程">结构化编程</h3>
+<p><em>Dijkstra</em> 的结构化编程对于较长的方法是有重要作用的，保证这些方法只有一个出口、永远不会有goto语句，可以使这些方法的处理逻辑更加清晰。</p>
+<h3 id="如何处理-switch">如何处理 <em>switch</em></h3>
+<p>避免 <em>switch</em> 语句使代码违反单一权责原则和开闭原则的最好方法是使用工厂，将 <em>switch</em> 放到抽象工厂内部，用多态来接收返回值。</p>
+<h2 id="对象与数据结构">对象与数据结构</h2>
+<p>对象和数据结构应该作为两个不同的概念进行区分</p>
+<ul>
+<li>对象曝露行为，隐藏数据</li>
+<li>数据结构曝露数据，没有明显行为</li>
+</ul>
+<p>通常所写的 <em>DTO</em>、<em>Bean</em> 都是数据结构，开放 <em>get</em>、<em>set</em> 方法可供调用。而 <em>Service</em> 的实现作为对象只去调用曝露的方法而不会关心内部的实现，对于对象我们应该仔细考虑哪些接口适合曝露出来。</p>
+<p>对象和数据结构是一个对立的概念，数据结构更适合过程式代码，在不改动既有数据结构的前提下添加方法。而对象适合面向对象的代码，可以在不改动现有方法的情况下添加新的类。</p>
+<p><em>The Law of Demeter</em> 是一个检验对象的使用是否标准的好方法。</p>
+<blockquote>
+<p>类C的的方法f只调用以下对象的方法</p>
+<ul>
+<li>C</li>
+<li>f 创作的对象</li>
+<li>作为参数传递给 f 的对象</li>
+<li>C 的实体变量持有的对象</li>
+</ul>
+</blockquote>
+<p>Redis 是使用 C语言编写的数据库，内部实现了多种数据结构：动态字符串、字典、压缩表、链表、跳跃表以及整数集合。但又基于数据结构实现了对象系统，每种对象可以根据需要选择不同的数据结构实现，数据结构应该考虑如何有效的存储数据。对象系统则提供交互方法，内部使用指针根据需要选用不同的数据结构。</p>
+<h2 id="异常-2">异常</h2>
+<h3 id="不可控异常">不可控异常</h3>
+<p><em>Java</em> 区分可控异常和运行时异常，可控异常的使用需要在方法签名中对异常进行声明，使用可控异常的底层代码会使所有调用它的方法选择继续上抛还是处理。异常旨在可以在较远处处理错误，抛出的异常打破了代码的封装。例如我们自定义异常时，可以将其自 <em>RuntimeException</em> 类继承，在代码中抛出该异常，然后由 <em>Controller</em> 层一个统一的异常处理器对抛出的异常进行处理。</p>
+<h3 id="好的异常捕获">好的异常捕获</h3>
+<p>先写 <em>try-catch-finally</em> 语句，自上而下的编程方式容易梳理抽象逻辑，因此先写出异常捕获语句，将其分为三个语句块，这三个语句块分别在做不同的事情，因此可以考虑将其再拆分为方法。</p>
+<p>如果一个方法抛出了多个异常，应该如何进行处理？在调用时使用 <em>try-catch</em> 对每个异常进行捕获是丑陋的做法，对于这样的情况，可以使用代理进行解决。为这个方法的对象建立一个代理，在代理类中对抛出多个异常的方法进行包装，在这个包装中进行记录日志等处理，统一抛出一个异常告诉调用者出现了异常。</p>
+<p>抛出异常应提供足够的环境说明，而不是简单的只通过堆栈信息来追踪错误信息。使用日志系统来记录操作的初衷，和发生时参数等信息，这些信息被日志系统记录下来有利于错误信息的监控。</p>
+<h3 id="特例模式">特例模式</h3>
+<p>特例模式同样继承自普通类，但内部封装的是异常处理。诸如某些操作可能返回 <em>null</em>，而这可能作为一种特殊的情况考虑，就可以将其返回 <em>null</em> 的情况修改为返回特例类，有这个特殊对象来处理相应的逻辑，无论如何，null值是不应该被返回和传递的。</p>
+<h2 id="类应该是什么样的">类应该是什么样的</h2>
+<h3 id="自上而下的原则">自上而下的原则</h3>
+<p>类从一组变量列表开始，顺序应为公共静态变量，私有静态变量，私有实体变量。</p>
+<p>之后为公共方法，该公共方法调用的私有方法紧跟其后。</p>
+<h3 id="单一权责">单一权责</h3>
+<p>一个类只应该有一个权责，即只有一条修改的理由。如何判断类是否拥有了过多权责可以用以下方法：</p>
+<ol>
+<li>是否能明确的为该类命名</li>
+<li>类中是否有过多实体变量</li>
+</ol>
+<p>好的类应该是足够内聚的，将过大的类拆分成内聚的小类，防止过分的耦合。</p>
+<h3 id="开闭原则">开闭原则</h3>
+<p>好的类要符合开闭原则，对于逻辑复杂的业务，合理的利用设计模式进行类的设计，使系统适应持续性的修改。因此类应该为了适合修改而组织（系统功能级别的修改），新增功能时尽可能少修改现有的类，而是通过扩展系统来添加新的特性。</p>
+<h2 id="系统层级的整洁">系统层级的整洁</h2>
+<p>系统层级是一个较高的抽象层级，这里主要关注功能实现的框架，而不是一些具体的编码规范。系统应该是整洁的，避免侵害性的架构。</p>
+<h3 id="分离构造和使用">分离构造和使用</h3>
+<p>分隔系统的构造和使用，让应用程序对构造过程一无所知，只是希望一切拿来即用。起始过程中构造对象会造成复杂的依赖关系，并且我们需要关系在每个环境中是否创建出了正确的对象，这又加大了单元测试的复杂程度，因此需要将构造与使用分开。对象的构造通常我们使用依赖注入或工厂来实现，工厂由应用程序决定何时创建对象，但细节却隔离于应用程序之外。依赖注入是 <em>Spring</em> 注入所提供的一个重要的功能，当我们需要某一对象时，只需要将其注入使用即可，构造过程由 <em>Spring</em> 来提供。</p>
+<h3 id="切面">切面</h3>
+<p><em>AOP</em> 使得增加新功能时不破坏原有的代码，避免了紧耦合问题。简单的情况下可以使用 Java 代理来实现一个功能在切面层级上的田间，但代理的复杂度和代码量让代码整洁变得很难，并且代理无法在系统范围内指定执行点，因此仍然需要 <em>AOP</em> 框架来实现。</p>
+<h3 id="如何处理代码中大量的if-else待补充">如何处理代码中大量的if-else(待补充)</h3>
+<ol>
+<li>使用Map映射池</li>
+<li>使用策略模式</li>
+</ol>
 ]]></content>
     </entry>
 </feed>
